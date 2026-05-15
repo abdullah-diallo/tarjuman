@@ -239,32 +239,42 @@ export default function SessionDetailPage() {
               }}
             />
           ) : (
-            <button
-              type="button"
-              onClick={startEditTitle}
-              aria-label="Edit title"
-              className="w-full text-left text-[15px] font-bold truncate cursor-text"
+            <div
+              className="w-full text-left text-[15px] font-bold truncate"
               style={{ color: COLORS.w }}
             >
               {title}
-            </button>
+            </div>
           )}
           <div className="text-[11px]" style={{ color: COLORS.t4 }}>
-            {formatDuration(session.duration)}{" "}
-            {!editingTitle && (
-              <span style={{ color: COLORS.t4 }}>· tap title to rename</span>
-            )}
+            {formatDuration(session.duration)}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleDelete}
-          aria-label="Delete session"
-          className="w-9 h-9 rounded-lg grid place-items-center cursor-pointer transition-colors"
-          style={{ background: COLORS.redSoft }}
-        >
-          <Icon name="trash" size={16} color={COLORS.red} />
-        </button>
+        {!editingTitle && (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={startEditTitle}
+              aria-label="Rename session"
+              className="w-9 h-9 rounded-lg grid place-items-center cursor-pointer transition-colors"
+              style={{
+                background: COLORS.surfaceLight,
+                border: `1px solid ${COLORS.borderLight}`,
+              }}
+            >
+              <Icon name="edit" size={16} color={COLORS.t2} />
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              aria-label="Delete session"
+              className="w-9 h-9 rounded-lg grid place-items-center cursor-pointer transition-colors"
+              style={{ background: COLORS.redSoft }}
+            >
+              <Icon name="trash" size={16} color={COLORS.red} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Language pair */}
