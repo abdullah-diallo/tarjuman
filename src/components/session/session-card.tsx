@@ -6,6 +6,8 @@ import { useMutation } from "convex/react";
 import { COLORS } from "@/lib/constants";
 import { formatDate, formatDuration, getLangName } from "@/lib/utils";
 import { Icon } from "@/components/shared/icon";
+import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { PromptDialog } from "@/components/shared/prompt-dialog";
 import type { StoredSession } from "@/hooks/use-sessions";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -20,31 +22,34 @@ export function SessionCard({ session }: SessionCardProps) {
 
   const [hoverRename, setHoverRename] = useState(false);
   const [hoverDelete, setHoverDelete] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const title = session.title ?? "Untitled session";
   const hasSummary = Boolean(session.summary);
 
-  const handleRename = (e: React.MouseEvent) => {
+  const openRename = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const next = window.prompt("Rename session", session.title ?? "");
-    if (next === null) return;
-    const trimmed = next.trim();
-    if (!trimmed || trimmed === session.title) return;
-    void updateTitle({
+    setRenameOpen(true);
+  };
+
+  const openDelete = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteOpen(true);
+  };
+
+  const handleRenameSave = async (next: string) => {
+    if (next === session.title) return;
+    await updateTitle({
       sessionId: session._id as Id<"sessions">,
-      title: trimmed,
+      title: next,
     });
   };
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const ok = window.confirm(
-      "Delete this session? The transcript and summary will be permanently removed."
-    );
-    if (!ok) return;
-    void deleteSession({ sessionId: session._id as Id<"sessions"> });
+  const handleDeleteConfirm = async () => {
+    await deleteSession({ sessionId: session._id as Id<"sessions"> });
   };
 
   return (
@@ -108,7 +113,7 @@ export function SessionCard({ session }: SessionCardProps) {
       <div className="flex items-center gap-0.5 pr-2 flex-shrink-0">
         <button
           type="button"
-          onClick={handleRename}
+          onClick={openRename}
           onMouseEnter={() => setHoverRename(true)}
           onMouseLeave={() => setHoverRename(false)}
           aria-label="Rename session"
@@ -122,7 +127,7 @@ export function SessionCard({ session }: SessionCardProps) {
         </button>
         <button
           type="button"
-          onClick={handleDelete}
+          onClick={openDelete}
           onMouseEnter={() => setHoverDelete(true)}
           onMouseLeave={() => setHoverDelete(false)}
           aria-label="Delete session"
@@ -135,6 +140,25 @@ export function SessionCard({ session }: SessionCardProps) {
           <Icon name="trash" size={16} color="currentColor" />
         </button>
       </div>
+
+      <PromptDialog
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+        title="Rename session"
+        label="Session name"
+        placeholder="e.g. Friday khutbah, March 14"
+        defaultValue={session.title ?? ""}
+        onSave={handleRenameSave}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete this session?"
+        message="The transcript and summary will be permanently removed. This cannot be undone."
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }
