@@ -142,6 +142,11 @@ export async function GET(req: Request) {
     // filter to a single dominant speaker. Critical for non-khutbah lectures
     // and panel discussions; a no-op when only one person is speaking.
     diarize: "true",
+    // Return detected_language + language_confidence with every Result so the
+    // client can drop segments where the detected language doesn't match the
+    // user-selected source (e.g., English side-conversation bleeding into an
+    // Arabic khutbah recording).
+    detect_language: "true",
   });
   const deepgramUrl = `wss://api.deepgram.com/v1/listen?${dgParams.toString()}`;
 

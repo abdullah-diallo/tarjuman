@@ -2,6 +2,75 @@
 
 import { useEffect, useRef } from "react";
 
+/**
+ * Curated list of known male system voices keyed by lowercased platform name.
+ * The Web Speech API does not expose voice gender, so we match by `voice.name`
+ * against this list. Per app policy, TTS always defaults to a male voice when
+ * one is available for the requested language.
+ *
+ * Sources covered: macOS (built-in TTS voices), iOS, Windows SAPI, common
+ * Android TTS voices. Add to this list when a target locale falls back to a
+ * female voice unintentionally — the console warns when that happens.
+ */
+const KNOWN_MALE_VOICE_NAMES = new Set<string>([
+  // macOS / iOS — multilingual, generally male
+  "alex",
+  "aaron",
+  "albert",
+  "arthur",
+  "bahh",
+  "boing",
+  "bruce",
+  "daniel",
+  "fred",
+  "junior",
+  "ralph",
+  "reed",
+  "rishi",
+  "tom",
+  // macOS / iOS — Arabic
+  "maged",
+  // macOS / iOS — Spanish, French, German, Italian, Portuguese, etc.
+  "diego",
+  "jorge",
+  "juan",
+  "thomas",
+  "yannick",
+  "markus",
+  "stefan",
+  "luca",
+  "paolo",
+  "felipe",
+  "joaquim",
+  // macOS / iOS — Russian, Turkish, Indonesian, Malay
+  "yuri",
+  "tarik",
+  "damayanti",
+  // Windows SAPI common male
+  "david",
+  "mark",
+  "george",
+  "james",
+  "richard",
+  "ravi",
+  // Google / Android (these may have multiple male variants per language)
+  "google us english male",
+  "google uk english male",
+]);
+
+function isKnownMaleVoice(voice: SpeechSynthesisVoice): boolean {
+  const name = voice.name.toLowerCase();
+  // Direct match
+  if (KNOWN_MALE_VOICE_NAMES.has(name)) return true;
+  // "Male" appears literally in some Android / Chrome voice names
+  if (/\bmale\b/.test(name) && !/\bfemale\b/.test(name)) return true;
+  // Some platforms prefix the language code: "en-us-x-tpd-local male"
+  for (const known of KNOWN_MALE_VOICE_NAMES) {
+    if (name.includes(known)) return true;
+  }
+  return false;
+}
+
 export interface TtsItem {
   id: string;
   text: string;
@@ -71,9 +140,12 @@ export function useTts({
     };
   }, []);
 
-  // Pick the best voice for the given language: prefer local-service voices
-  // (higher quality on macOS, lower latency everywhere), fall back to first
-  // matching language code.
+  // Pick the best voice for the given language. The Web Speech API does NOT
+  // expose voice gender, so we match the voice name against a curated list
+  // of platform male voices (macOS, iOS, Windows, common Android). Default
+  // is always male per app policy. Falls back to first available match if
+  // no male voice is installed for the language — and warns to the console
+  // so we know when to extend the list.
   const pickVoice = (lang: string): SpeechSynthesisVoice | null => {
     const voices = voicesRef.current;
     if (voices.length === 0) return null;
@@ -82,9 +154,16 @@ export function useTts({
       v.lang.toLowerCase().startsWith(langLower)
     );
     if (matches.length === 0) return null;
-    return (
-      matches.find((v) => v.localService) ?? matches[0] ?? null
+
+    const male = matches.find((v) => isKnownMaleVoice(v));
+    if (male) return male;
+
+    console.warn(
+      `[tts] no known male voice installed for "${lang}" — falling back. Available: ${matches
+        .map((v) => `${v.name} (${v.lang})`)
+        .join(", ")}`
     );
+    return matches.find((v) => v.localService) ?? matches[0] ?? null;
   };
 
   // Watch items for new ones to speak.

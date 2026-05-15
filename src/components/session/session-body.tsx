@@ -294,6 +294,16 @@ export function SessionBody({
               {summary.text}
             </ReactMarkdown>
           </div>
+          <div
+            className="mt-4 pt-3 text-[11px] italic"
+            style={{
+              color: COLORS.t3,
+              borderTop: `1px solid ${COLORS.borderLight}`,
+            }}
+          >
+            Quranic and hadith references are best-effort recognition by the
+            AI — verify against original sources before quoting or sharing.
+          </div>
         </div>
       )}
 

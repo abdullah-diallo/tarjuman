@@ -82,6 +82,21 @@ export function useTranslator({
       inFlightRef.current.add(seg.id);
       forcePendingRender((n) => n + 1);
 
+      // Build disambiguation context: up to 3 most-recent FINAL segments
+      // strictly preceding this one. The server uses these only to interpret
+      // the current segment in context; the prompt forbids echoing them in
+      // the output. Prevents "نحمده" alone translating without the
+      // surrounding khutbah-opening context.
+      const segIndex = segments.indexOf(seg);
+      const priorFinals = segments
+        .slice(0, segIndex)
+        .filter((s) => s.isFinal)
+        .slice(-3);
+      const requestContext = priorFinals.map((s) => ({
+        sourceText: s.text,
+        translatedText: translations[s.id],
+      }));
+
       void (async () => {
         try {
           const headers: Record<string, string> = {
@@ -95,6 +110,7 @@ export function useTranslator({
               text: seg.text,
               source: sourceLanguage,
               target: targetLanguage,
+              context: requestContext.length > 0 ? requestContext : undefined,
             }),
           });
           if (cancelled) return;

@@ -19,11 +19,21 @@
  */
 
 export const ISLAMIC_TERMINOLOGY_RULES = `
-## Islamic terminology rules (apply when translating or summarizing Arabic religious content — khutbahs, lectures, classes, Quran study)
+## Methodology and creed framing
 
-The user is a non-Arabic-speaking Muslim attending lectures. They expect English text that uses the conventional Islamic-English vocabulary, NOT generic translations.
+This app's audience is Sunni Muslims following the methodology (manhaj) of the Salaf as-Salih (the righteous predecessors — the first three generations of Muslims). All Islamic content must be interpreted within the framework of Ahl as-Sunnah wal-Jama'ah ('aqeedah and fiqh), avoiding sectarian, modernist, or innovative readings.
 
-### Rule 1 — Divine names and honorifics: NEVER translate these to generic English equivalents.
+When a phrase has multiple sectarian readings (e.g., Sunni vs Shia, Salafi vs Sufi, Mu'tazili, etc.), render the authentic Sunni Salafi reading and use the corresponding terminology. Do not soften, secularize, or generalize theological concepts to fit a non-Muslim audience — the audience is Muslim and expects authentic Islamic English (or the equivalent in the target language).
+
+## Source-language agnostic
+
+These rules apply REGARDLESS of source language. They fire whenever Islamic content appears in the input, whether the speaker is using Arabic, English, Urdu, Turkish, Bahasa, French, or any other language. An English-language lecture about Islam being translated to Urdu still requires preserving "Allah", "Salah", "Sabr", honorifics, and authentic Quranic/hadith renderings in the target.
+
+## Islamic terminology rules
+
+The audience expects target-language text that uses the conventional Islamic vocabulary, NOT flattened generic translations.
+
+### Rule 1 — Divine names and honorifics: NEVER translate these to generic equivalents.
 
 - "Allah" — never "God." Always Allah.
 - "Allahu Akbar" — preserve verbatim.
@@ -36,15 +46,29 @@ The user is a non-Arabic-speaking Muslim attending lectures. They expect English
 - The honorific ﷺ (Sallallahu Alayhi Wa Sallam) follows the Prophet Muhammad's name. Always include either the symbol "ﷺ" or "(peace be upon him)" / "(PBUH)" after every mention of the Prophet.
 - Other prophets get "(peace be upon him)" or "(a.s.)" / "(عليه السلام)": Ibrahim (a.s.), Musa (a.s.), Isa (a.s.), etc. Do NOT use Anglicized names (Abraham, Moses, Jesus) when the speaker used Arabic names.
 
-### Rule 2 — Quranic verses: render the meaning, do not transliterate.
+### Rule 2 — Quranic verses and Hadith: cite authentically, but ONLY when 100% certain.
 
-If a transcript segment is a Quranic verse, output the standard English meaning. Do not phonetically transliterate the Arabic. If the speaker stated the surah name and ayah number ("Surah Al-Baqarah, ayah 255"), preserve that reference.
+This is the most important rule for source-fidelity. Read carefully.
 
-For famous formulaic verses, use the conventional English rendering:
-- إنا لله وإنا إليه راجعون → "Indeed, to Allah we belong and to Him we shall return"
-- بسم الله الرحمن الرحيم → "In the name of Allah, the Most Gracious, the Most Merciful"
-- لا حول ولا قوة إلا بالله → "There is no power and no might except with Allah"
-- الحمد لله رب العالمين → "All praise is due to Allah, Lord of the Worlds"
+**For Quranic verses** that you recognize with **100% certainty** as the exact wording of a known ayah:
+- For English target: render Muhsin Khan's translation (the Salafi-preferred English rendering).
+- For other-language target: render the most widely-accepted Salafi-approved translation conventional for that language. Examples: Urdu → Fateh Muhammad Jalandhary or Mahmood al-Hasan; Indonesian → Tafsir Departemen Agama or Hilali-Khan equivalent.
+- Add an inline reference at the end in this exact form: \`[Quran SurahName:AyahNumber]\`. Example: \`[Quran Al-Baqarah:255]\`. Use the standard English transliteration of the surah name (Al-Baqarah, Al-Imran, Al-Kahf, etc.).
+- If the speaker themself stated the surah/ayah ("Surah Al-Baqarah, ayah 255"), preserve their reference instead of duplicating.
+
+**For Hadith** that you recognize with **100% certainty** as authentic narrations from the six canonical Sunni collections (Sahih al-Bukhari, Sahih Muslim, Sunan Abu Dawud, Jami' at-Tirmidhi, Sunan an-Nasa'i, Sunan Ibn Majah):
+- Translate using a well-accepted English rendering (or the equivalent authentic translation in the target language).
+- Add an inline reference: \`[Sahih al-Bukhari, Hadith ####]\`, \`[Sahih Muslim, Hadith ####]\`, etc. If you don't know the hadith number, the book name alone is acceptable: \`[Sahih al-Bukhari]\`.
+- For hadith from Imam Malik's Muwatta or other Sunni collections, cite the collection name. Do NOT cite from collections outside Ahl as-Sunnah.
+
+**Hard rule — fabrication is forbidden:**
+If you do NOT recognize the exact wording with full certainty, if you cannot pin a specific surah:ayah, if you cannot identify the specific hadith book — DO NOT add a reference. Translate the phrase literally as the speaker said it without claiming a source. **Fabricated citations are strictly worse than missing ones.** A translation with no reference is honest; a translation with a wrong reference misleads the audience.
+
+**Famous formulaic phrases** that are well-known and unambiguous can be rendered conventionally:
+- إنا لله وإنا إليه راجعون → "Indeed, to Allah we belong and to Him we shall return" \`[Quran Al-Baqarah:156]\`
+- بسم الله الرحمن الرحيم → "In the name of Allah, the Most Gracious, the Most Merciful" (Quranic header — citation optional)
+- لا حول ولا قوة إلا بالله → "There is no power and no might except with Allah" (du'a, not a verse — no citation)
+- الحمد لله رب العالمين → "All praise is due to Allah, Lord of the worlds" \`[Quran Al-Fatihah:2]\`
 
 ### Rule 3 — Worship, ritual, and fiqh terms: preserve transliterations.
 
@@ -178,4 +202,15 @@ what is there and end with "..." — never add a parenthetical note about
 the cut, never ask the user to provide the rest.
 Input:  ان الحمد لله نحو
 Output: All praise is due to Allah...
+
+### Example 8 — Quranic verse recognized with certainty (Ayat al-Kursi opening)
+Input:  الله لا إله إلا هو الحي القيوم
+Output: Allah! La ilaha illa Huwa (none has the right to be worshipped but He), Al-Hayyul-Qayyum (the Ever Living, the One Who sustains and protects all that exists). [Quran Al-Baqarah:255]
+
+### Example 9 — religious-sounding phrase that is NOT a Quranic verse — no fake citation
+The speaker is making a personal du'a / statement using common Islamic
+vocabulary, but it is not from the Quran. Translate literally with
+preserved terminology. Do NOT invent a surah:ayah reference.
+Input:  اللهم اجعلنا من عبادك الصالحين
+Output: O Allah, make us among Your righteous servants.
 `.trim();

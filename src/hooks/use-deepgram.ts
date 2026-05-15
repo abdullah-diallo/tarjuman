@@ -56,6 +56,11 @@ interface DeepgramResultMessage {
       confidence?: number;
       words?: DeepgramWord[];
     }[];
+    // Present when `detect_language=true` is set on the connection. Used to
+    // drop segments where the spoken language doesn't match the source the
+    // user picked (e.g., English bleed in an Arabic-source session).
+    detected_language?: string;
+    language_confidence?: number;
   };
 }
 
@@ -67,13 +72,20 @@ type DeepgramMessage =
 
 /**
  * Drop a final segment if Deepgram's confidence falls below this threshold.
- * Khutbah audio captured through PA + room reverb typically scores 0.6–0.85
- * on real speech; ambient cough/AC/crowd misheard as broken Arabic lands
- * well under 0.3. The previous 0.5 cutoff was over-aggressive and silently
- * suppressed legitimate finals — making the UI feel slow when Deepgram had
- * actually returned text.
+ * Native-language khutbah audio through PA + room reverb typically scores
+ * 0.7–0.95 on real speech. Off-language audio (e.g., English side-conversation
+ * in an Arabic session) typically lands in 0.2–0.5. 0.55 is the floor that
+ * keeps the speaker's quieter moments while rejecting off-language bleed and
+ * misheard ambient noise.
  */
-const FINAL_CONFIDENCE_THRESHOLD = 0.3;
+const FINAL_CONFIDENCE_THRESHOLD = 0.55;
+
+/** Lock policy: don't lock until the session has been active this long. */
+const SPEAKER_LOCK_WARMUP_MS = 15_000;
+/** Lock policy: minimum speech duration (seconds) before any speaker can be locked. */
+const SPEAKER_LOCK_MIN_DURATION_S = 5;
+/** Off-language drop: only drop if the language-detection confidence exceeds this. */
+const LANGUAGE_MISMATCH_DROP_THRESHOLD = 0.7;
 
 function makeId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -128,6 +140,14 @@ export function useDeepgram({
   // without re-establishing the WS each time it flips.
   const pausedRef = useRef(false);
 
+  // Session-wide speaker lock. Once locked, segments where the dominant
+  // speaker isn't the locked speaker are dropped (per user policy: "ignore
+  // side conversations"). Refs survive WS reconnects within the same session
+  // and are reset only when the hook teardown fires (enabled=false / unmount).
+  const lockedSpeakerRef = useRef<number | null>(null);
+  const speakerDurationsRef = useRef<Map<number, number>>(new Map());
+  const sessionStartRef = useRef<number | null>(null);
+
   const resetTranscript = useCallback(() => {
     setSegments([]);
     setInterimText("");
@@ -137,11 +157,18 @@ export function useDeepgram({
     if (!enabled || !pcmNode) {
       setConnectionState("idle");
       setReconnectAttempt(0);
+      // Reset speaker-lock state at the end of a session so the next session
+      // starts fresh. Keeping it across stop/start would carry a stale lock
+      // from a previous speaker into a new recording.
+      lockedSpeakerRef.current = null;
+      speakerDurationsRef.current = new Map();
+      sessionStartRef.current = null;
       return;
     }
 
     const myGeneration = ++generationRef.current;
     const isLive = () => generationRef.current === myGeneration;
+    sessionStartRef.current = Date.now();
 
     // Closure-local state. NOT refs. This entire block is torn down on
     // the next mount, and nothing leaks into the re-mount.
@@ -326,6 +353,26 @@ export function useDeepgram({
             setInterimText("");
             return;
           }
+          // Off-language drop. With detect_language=true Deepgram returns
+          // detected_language + language_confidence per result. If the
+          // detector is sure (>0.7) the audio isn't in the user-selected
+          // source language, drop the segment. Use the prefix match so
+          // "ar-SA" still counts as "ar".
+          const detectedLang = msg.channel.detected_language;
+          const langConf = msg.channel.language_confidence ?? 0;
+          if (
+            detectedLang &&
+            langConf >= LANGUAGE_MISMATCH_DROP_THRESHOLD &&
+            !detectedLang.toLowerCase().startsWith(sourceLanguage.toLowerCase())
+          ) {
+            console.log(
+              `[deepgram] dropped off-language segment (detected=${detectedLang} @ ${langConf.toFixed(
+                2
+              )}, source=${sourceLanguage}): "${transcript.slice(0, 60)}"`
+            );
+            setInterimText("");
+            return;
+          }
           // Pick the dominant speaker for this segment by total word duration.
           // Falls back to the first word's speaker, then undefined if no
           // speaker info (diarization disabled or single-speaker session).
@@ -349,6 +396,60 @@ export function useDeepgram({
             } else if (typeof words[0].speaker === "number") {
               speaker = words[0].speaker;
             }
+          }
+
+          // Speaker lock — accumulate per-speaker speech duration across the
+          // session; once we have enough signal, lock onto the speaker with
+          // the most total speech, and drop subsequent segments where that
+          // speaker isn't dominant. This implements "ignore side conversations
+          // and sounds" — the loudest/main speaker stays, others are filtered.
+          if (words.length > 0) {
+            for (const w of words) {
+              if (typeof w.speaker !== "number") continue;
+              const dur = (w.end ?? 0) - (w.start ?? 0);
+              if (dur <= 0) continue;
+              speakerDurationsRef.current.set(
+                w.speaker,
+                (speakerDurationsRef.current.get(w.speaker) ?? 0) + dur
+              );
+            }
+          }
+          if (lockedSpeakerRef.current === null) {
+            // Lock-fire conditions: session has been active long enough AND
+            // any speaker has accumulated enough speech. The warmup keeps the
+            // lock from snapping onto a brief opening cough or unrelated voice.
+            const sessionAgeMs = sessionStartRef.current
+              ? Date.now() - sessionStartRef.current
+              : 0;
+            if (sessionAgeMs >= SPEAKER_LOCK_WARMUP_MS) {
+              let bestSpeaker: number | null = null;
+              let bestDur = -1;
+              for (const [s, d] of speakerDurationsRef.current) {
+                if (d > bestDur) {
+                  bestDur = d;
+                  bestSpeaker = s;
+                }
+              }
+              if (bestSpeaker !== null && bestDur >= SPEAKER_LOCK_MIN_DURATION_S) {
+                lockedSpeakerRef.current = bestSpeaker;
+                console.log(
+                  `[deepgram] locked to speaker ${bestSpeaker} after ${(
+                    sessionAgeMs / 1000
+                  ).toFixed(1)}s (${bestDur.toFixed(1)}s of speech)`
+                );
+              }
+            }
+          } else if (speaker !== undefined && speaker !== lockedSpeakerRef.current) {
+            // Locked, and this segment's dominant speaker isn't the locked
+            // one. Drop it — it's a side conversation.
+            console.log(
+              `[deepgram] dropped side-speaker segment (speaker=${speaker}, locked=${lockedSpeakerRef.current}): "${transcript.slice(
+                0,
+                60
+              )}"`
+            );
+            setInterimText("");
+            return;
           }
           setSegments((prev) => [
             ...prev,

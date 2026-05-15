@@ -9,6 +9,13 @@ interface TranslateRequest {
   text: string;
   source?: string;
   target: string;
+  /**
+   * Recent prior segments (sourceText + optional translatedText) sent for
+   * disambiguation only. The model is instructed never to translate or
+   * include these in its output — they exist solely so a short ambiguous
+   * `text` is interpreted in the surrounding flow rather than in isolation.
+   */
+  context?: { sourceText: string; translatedText?: string }[];
 }
 
 interface AnthropicResponse {
@@ -63,6 +70,37 @@ function languageName(code: string | undefined): string {
   return LANGUAGE_NAMES[code] ?? code;
 }
 
+function buildUserMessage(opts: {
+  text: string;
+  sourceName: string;
+  targetName: string;
+  context?: { sourceText: string; translatedText?: string }[];
+}): string {
+  const { text, sourceName, targetName, context } = opts;
+  const hasContext = Array.isArray(context) && context.length > 0;
+
+  if (!hasContext) {
+    return `Translate from ${sourceName} to ${targetName}:\n\n${text}`;
+  }
+
+  const contextLines = context!
+    .map((c, i) => {
+      const idx = i + 1;
+      const src = c.sourceText.trim();
+      const tr = c.translatedText?.trim();
+      return tr
+        ? `  [${idx}] ${sourceName}: ${src}\n      ${targetName}: ${tr}`
+        : `  [${idx}] ${sourceName}: ${src}`;
+    })
+    .join("\n");
+
+  return `Context (prior segments — for disambiguation only, do NOT include in your output):
+${contextLines}
+
+Now translate ONLY this segment from ${sourceName} to ${targetName} (output the translation only):
+${text}`;
+}
+
 // Translation system prompt. The Islamic-terminology rules are the whole
 // reason this app uses an LLM (instead of Google Translate) — Google flattens
 // "Allah" → "God" and strips honorifics, which is unacceptable for the
@@ -72,7 +110,7 @@ function languageName(code: string | undefined): string {
 // `cache_control: ephemeral` is set on this block below; the prompt is
 // large enough to comfortably exceed Haiku's 2048-token cache threshold,
 // so subsequent calls within a 5-minute window pay ~10% of input cost.
-const SYSTEM_PROMPT = `You are a translation engine for a live transcription app used primarily for Islamic lectures, khutbahs, classes, and Quranic study. Translate the user's text from the source language to the target language and output ONLY the translation — no preamble, no commentary, no quotation marks, no language labels.
+const SYSTEM_PROMPT = `You are a translation engine for a live transcription app used by Sunni Muslim audiences for Islamic sermons (khutbahs), lectures, classes, Quranic study, and religious talks. Interpret all Islamic content within the framework of Ahl as-Sunnah wal-Jama'ah following the methodology of the Salaf as-Salih (the righteous predecessors). Translate the user's text from the source language to the target language and output ONLY the translation — no preamble, no commentary, no quotation marks, no language labels.
 
 ## General rules
 - Output ONLY the translation. Never address the user. Never include notes, warnings, parentheticals about input quality, requests for clarification, or any text that is not itself a translation of the input.
@@ -80,6 +118,12 @@ const SYSTEM_PROMPT = `You are a translation engine for a live transcription app
 - Input may be a fragment or mid-sentence — this is a live transcription app, so the speaker hasn't finished. Translate fragments as fragments. If a word is cut off mid-syllable, translate what's there and end with "..." rather than commenting on the cut.
 - If the input is already in the target language, output it unchanged.
 - If the input is empty, gibberish, or genuinely untranslatable, output an empty string (do not invent translations of noise, do not explain why).
+- The Islamic-terminology rules below apply REGARDLESS of source language. They fire whenever Islamic content is present — Arabic→English, English→Urdu, Turkish→French, etc.
+
+## Context handling
+- The user message may contain a "Context (prior segments)" block before the segment to translate. That context exists ONLY for disambiguation — to give you the surrounding flow when the current segment is short or ambiguous.
+- NEVER translate or include any context segment in your output. Output only the translation of the explicitly-marked current segment.
+- Use context to resolve pronouns, gendered references, continuation phrases, and to choose terminology consistent with what came before.
 
 ${ISLAMIC_TERMINOLOGY_RULES}
 
@@ -125,7 +169,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { text, source, target } = body;
+  const { text, source, target, context } = body;
   if (!text || typeof text !== "string") {
     return NextResponse.json(
       { error: "Missing or invalid `text`" },
@@ -173,7 +217,12 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: "user",
-            content: `Translate from ${sourceName} to ${targetName}:\n\n${text}`,
+            content: buildUserMessage({
+              text,
+              sourceName,
+              targetName,
+              context,
+            }),
           },
         ],
       }),
