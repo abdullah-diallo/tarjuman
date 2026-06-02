@@ -22,7 +22,7 @@ import { useRecorder } from "@/hooks/use-recorder";
 import { useDeepgram } from "@/hooks/use-deepgram";
 import { useTranslator } from "@/hooks/use-translator";
 import { useSessionTimer } from "@/hooks/use-session-timer";
-import { useTts } from "@/hooks/use-tts";
+import { useOpenaiTts } from "@/hooks/use-openai-tts";
 
 const TTS_PREF_KEY = "livetranscribe:tts-enabled";
 
@@ -118,7 +118,11 @@ export default function RecordPage() {
       })),
     [translator.translations]
   );
-  useTts({
+  // OpenAI TTS for natural-sounding voice output, with automatic fallback
+  // to the browser's Web Speech API when OPENAI_API_KEY isn't set or the
+  // upstream call fails. Same trigger as the old useTts — translator items
+  // arriving in `ttsItems` get spoken in arrival order.
+  useOpenaiTts({
     enabled: ttsEnabled && isActive,
     paused: recorder.phase === "paused",
     language: targetLang,

@@ -88,6 +88,8 @@ const LIMITS: Record<string, LimitConfig> = {
   // Summary is once per session. A user shouldn't need more than ~10/hour
   // even with re-generations.
   summarize: { capacity: 10, refillPerSec: 10 / 3600 },
+  // TTS fires once per translated segment, same burst pattern as translate.
+  tts: { capacity: 60, refillPerSec: 1 },
 };
 
 export function checkRateLimit(
