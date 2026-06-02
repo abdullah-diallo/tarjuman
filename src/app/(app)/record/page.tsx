@@ -351,7 +351,12 @@ export default function RecordPage() {
     );
   }
 
-  if (isActive || recorder.phase === "starting") {
+  // Only render the recording shell when the user has actually started a
+  // session (phase = recording or paused). The brief "starting" phase that
+  // fires during `prewarm()` on page mount must stay invisible — otherwise
+  // the user lands on /record, sees the recording UI flash for ~200ms while
+  // the audio pipeline opens in the background, then bounces back to idle.
+  if (isActive) {
     return (
       <RecordingShell
         sourceLang={sourceLang}
@@ -429,7 +434,10 @@ export default function RecordPage() {
           }}
         />
 
-        <IdleRecordButton onStart={handleStart} />
+        <IdleRecordButton
+          onStart={handleStart}
+          disabled={recorder.phase === "starting"}
+        />
 
         <RecentSessionsPreview />
       </div>
