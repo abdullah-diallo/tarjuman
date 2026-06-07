@@ -1,172 +1,194 @@
-# Deploy LiveTranscribe to Fly.io
+# Deploy LiveTranscribe to Vercel
 
-This is the canonical deploy guide. Vercel cannot host this app because the
-Deepgram WebSocket proxy in `server.js` requires a persistent Node process
-(Vercel is serverless). Fly.io runs Docker containers and supports
-WebSockets natively.
+This is the canonical deploy guide. The app is hosted on Vercel with the
+GitHub integration: every push to `main` builds and deploys production.
+
+- **Production app:** https://live-transcribe-tarjuman-2ngq.vercel.app
+- **Convex prod deployment:** `opulent-parakeet-508`
+- **Convex dev deployment:** `ardent-mockingbird-866`
+- **GitHub repo:** `abdullah-diallo/live-transcribe--tarjuman-`
+
+## Why Vercel works (the server.js caveat)
+
+`server.js` (the Deepgram WebSocket proxy at `/api/deepgram-ws`) is
+**dev-only**. It exists to get around networks that block browser
+WebSockets to `wss://api.deepgram.com`. In production,
+`src/app/api/deepgram/route.ts` detects Vercel (`VERCEL === "1"` or
+`NODE_ENV === "production"`), mints a short-lived Deepgram key via the
+management API, and the browser opens the WebSocket to Deepgram
+directly — no persistent Node process needed. Vercel never runs
+`server.js`; it builds with `next build` and serves routes as serverless
+functions.
+
+## How the build works
+
+Vercel runs `npm run build`, which is:
+
+```bash
+convex deploy --cmd 'npx convex codegen && next build'
+```
+
+One command does both deploys: it pushes `convex/` functions to the
+**prod** Convex deployment, then runs the Next build with
+`NEXT_PUBLIC_CONVEX_URL` automatically injected (pointing at
+`https://opulent-parakeet-508.convex.cloud`). You do not set
+`NEXT_PUBLIC_CONVEX_URL` in Vercel yourself.
+
+This requires `CONVEX_DEPLOY_KEY` in Vercel's env (see below).
+
+> **Footgun:** scope `CONVEX_DEPLOY_KEY` to the **Production**
+> environment only. If it's available to Preview builds, every preview
+> branch will deploy its `convex/` code to PROD Convex. Preview deploys
+> will fail without a key — that's the safe default. (Convex preview
+> deployments exist if you ever want working previews, but they need a
+> separate preview deploy key.)
 
 ## One-time setup
 
-### 1. Install the Fly CLI
-```bash
-brew install flyctl
-fly auth signup        # or `fly auth login` if you already have an account
+### 1. Create the Vercel project
+
+Vercel dashboard → **Add New → Project** → import
+`abdullah-diallo/live-transcribe--tarjuman-`. Framework preset:
+Next.js. Build command: leave default (`npm run build`). No
+`vercel.json` is needed.
+
+### 2. Set environment variables
+
+Project → **Settings → Environment Variables**. All of these are
+server-side unless marked `NEXT_PUBLIC_`:
+
+```
+CONVEX_DEPLOY_KEY      (Production only — from Convex dashboard →
+                        opulent-parakeet-508 → Settings → Deploy key)
+DEEPGRAM_API_KEY       your Deepgram key
+ANTHROPIC_API_KEY      sk-ant-api03-...
+OPENAI_API_KEY         sk-proj-...        (optional but recommended)
+SUNNAH_API_KEY         sunnah.com key     (optional)
+DEEPGRAM_PROJECT_ID    Deepgram project id (optional)
+NEXT_PUBLIC_APP_URL    https://live-transcribe-tarjuman-2ngq.vercel.app
+NEXT_PUBLIC_SENTRY_DSN your Sentry DSN    (optional; empty = Sentry off)
 ```
 
-Free tier covers 3 small machines, enough to run the dev + prod
-deployment with room to spare.
+Also enable **Settings → Environment Variables → Automatically expose
+System Environment Variables** so `NEXT_PUBLIC_VERCEL_ENV` is available
+(`src/lib/sentry.ts` uses it to tag the Sentry environment).
 
-### 2. Create the Fly app
-From the project root:
-```bash
-fly launch --no-deploy --copy-config
-```
+**Env vars only apply to new builds.** After adding or changing one:
+Deployments → ⋯ on the latest deployment → **Redeploy**.
 
-`--copy-config` tells Fly to use the `fly.toml` already in this repo
-(region: Bahrain, 512MB, shared CPU). When prompted:
-- App name: `livetranscribe` (or pick your own — must be globally unique)
-- Skip Postgres / Redis (we use Convex for DB)
-- DO confirm the deploy region is `fra` (Frankfurt) — Fly has no Gulf data center, Frankfurt has the best latency for KSA users
+### 3. Set Convex prod env vars
 
-This creates the Fly app + a Fly volume (none — we don't need persistent disk).
-
-### 3. Set runtime secrets
-Server-side secrets (NOT inlined into the client bundle):
-```bash
-fly secrets set \
-  DEEPGRAM_API_KEY='your-deepgram-key' \
-  ANTHROPIC_API_KEY='sk-ant-api03-...' \
-  LOOPS_API_KEY='loops_...' \
-  LOOPS_PASSWORD_RESET_ID='your-loops-template-id'
-```
-
-These are stored encrypted by Fly and injected as env vars at container
-startup. Update them anytime with `fly secrets set KEY=value`.
-
-### 4. Deploy
-
-The first deploy needs to inline the public env vars (Convex URL etc.)
-into the client bundle at build time:
+These live in Convex itself (`convex/` code runs in Convex's runtime,
+not Vercel's). Set via dashboard or:
 
 ```bash
-fly deploy \
-  --build-arg NEXT_PUBLIC_CONVEX_URL='https://ardent-mockingbird-866.convex.cloud' \
-  --build-arg NEXT_PUBLIC_CONVEX_SITE_URL='https://ardent-mockingbird-866.convex.site' \
-  --build-arg NEXT_PUBLIC_SENTRY_DSN='your-sentry-dsn-or-empty' \
-  --build-arg NEXT_PUBLIC_APP_URL='https://livetranscribe.fly.dev'
+npx convex env set --prod KEY value
 ```
 
-Replace `livetranscribe.fly.dev` with your actual Fly app URL once Fly
-assigns it (printed after `fly launch`). On the very first deploy you can
-leave it as `https://<app-name>.fly.dev`; you'll only know the canonical
-URL after deployment, and a redeploy with the right value is fine.
+| Var | Purpose |
+|---|---|
+| `JWT_PRIVATE_KEY`, `JWKS` | Convex Auth session signing — set automatically by `npx @convex-dev/auth` |
+| `SITE_URL` | The Vercel URL (`https://live-transcribe-tarjuman-2ngq.vercel.app`) — Convex Auth redirects |
+| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google OAuth — required for Google sign-in |
+| `RESEND_API_KEY` | Password-reset email sender (`convex/passwordReset.ts`) |
+| `RESEND_FROM` | Optional "From" address, e.g. `LiveTranscribe <no-reply@yourdomain>` |
 
-After deploy:
-```bash
-fly status                # check the machine is healthy
-fly logs                  # tail logs in real time
-fly open                  # open the deployed app in your browser
-```
+> **Resend caveat:** without `RESEND_FROM`, password-reset emails go out
+> from Resend's test sender, which only delivers to the Resend account
+> owner's own inbox. Before real users need password reset, verify a
+> domain in Resend and set `RESEND_FROM` to an address on it.
 
-### 5. Update Google OAuth redirect URI
+(`LOOPS_API_KEY` / `LOOPS_PASSWORD_RESET_ID` in the Convex env are
+leftovers from the old Loops integration — unused since the switch to
+Resend; safe to delete.)
 
-Now that the app has a public URL, add the Fly URL to your Google OAuth
-client's "Authorized redirect URIs" list:
+### 4. Google OAuth URLs
 
-```
-https://ardent-mockingbird-866.convex.site/api/auth/callback/google
-```
+In the Google Cloud console, the OAuth client needs:
 
-(That stays the same regardless of where Next is hosted, because Convex
-Auth handles the OAuth callback on the Convex side. Same for the
-authorized JS origins — add `https://livetranscribe.fly.dev` there.)
+- **Authorized redirect URI** (Convex handles the callback, so this is
+  the Convex site URL, not the Vercel one):
+  ```
+  https://opulent-parakeet-508.convex.site/api/auth/callback/google
+  ```
+  (and `https://ardent-mockingbird-866.convex.site/api/auth/callback/google`
+  if you want Google sign-in to work in local dev too)
+- **Authorized JavaScript origin:**
+  ```
+  https://live-transcribe-tarjuman-2ngq.vercel.app
+  ```
 
-### 6. Verify
+### 5. Verify
 
 Open the deployed URL and try:
 - [ ] Sign up with email + password → land on `/record`
 - [ ] Sign in with Google → land on `/record`
 - [ ] Tap record → grant mic → speak Arabic → see transcript + translation
+      (confirms temp-key minting + direct Deepgram WS works on Vercel)
 - [ ] Stop → Generate Summary → summary appears
+- [ ] Read-aloud uses the OpenAI `onyx` voice, not the robotic browser
+      voice (confirms `OPENAI_API_KEY` is set — falls back silently if not)
 - [ ] History tab shows the session
 - [ ] Tap session → detail page loads with transcript + summary
 - [ ] Sign out → Sign back in → history persists
-- [ ] Sign out → Forgot password → check email arrives via Loops → reset
+- [ ] Sign out → Forgot password → reset email arrives via Resend → reset
 - [ ] Account menu → Delete account → all sessions removed
 - [ ] `/privacy` and `/terms` reachable without auth
 - [ ] Hit `/api/translate` from curl with no auth → 401 (not 200)
 
 ## Subsequent deploys
 
-After the initial deploy, the build args don't change. Just:
-```bash
-fly deploy
-```
-unless an env var changes (then re-run with the appropriate `--build-arg`).
+Push to `main`. Vercel builds and deploys automatically; the build step
+also deploys `convex/` to prod. Branch pushes get preview URLs (but see
+the `CONVEX_DEPLOY_KEY` footgun above — previews build against whatever
+Convex URL they can resolve, and fail without a deploy key).
+
+There is no Vercel CLI installed locally and none is required. If you
+want one: `npm i -g vercel`, then `vercel link` in the project root.
 
 ## Custom domain
 
-When you're ready (e.g. `livetranscribe.app`):
-```bash
-fly certs add livetranscribe.app
-```
+When ready (e.g. `livetranscribe.app`): Vercel project → **Settings →
+Domains** → add the domain and follow the DNS instructions (CNAME to
+`cname.vercel-dns.com`). Vercel auto-provisions the certificate. Then
+update everywhere the URL is pinned:
 
-Then add a CNAME record at your DNS provider pointing `livetranscribe.app`
-to `livetranscribe.fly.dev`. Fly auto-provisions a Let's Encrypt cert.
-
-Update the build args on the next deploy:
-```bash
-fly deploy --build-arg NEXT_PUBLIC_APP_URL='https://livetranscribe.app' [...]
-```
-
-And add the new domain to Google OAuth's authorized origins/redirect URIs.
-
-## Scaling
-
-When the user base grows enough that cold starts hurt, set the floor:
-```bash
-fly scale count 1 --max-per-region 2
-```
-
-This keeps at least one machine always running and allows up to 2 in the
-primary region during traffic spikes. Cost goes from $0/mo (free tier with
-auto-stop) to ~$2-5/mo per always-on machine.
+1. Vercel env: `NEXT_PUBLIC_APP_URL` → redeploy
+2. Convex prod env: `npx convex env set --prod SITE_URL https://livetranscribe.app`
+3. Google OAuth authorized JavaScript origins
+4. Resend: verify the domain and set `RESEND_FROM`
 
 ## Rollback
 
-```bash
-fly releases                    # list past releases
-fly releases rollback <version> # roll back to a known-good build
-```
+Deployments → pick a previous known-good deployment → ⋯ → **Instant
+Rollback** (or "Promote to Production"). Note this rolls back the Next
+app only — if the bad deploy also changed `convex/` functions or
+schema, redeploy a good commit instead so Convex rolls back with it.
 
 ## Health monitoring
 
-Fly's dashboard shows CPU/memory/request graphs. For deeper visibility
-once you have a Sentry DSN configured:
-- Sentry captures any unhandled error from any route handler or React
-  component. Drop the DSN into the build args above + redeploy.
+Vercel's dashboard shows per-route invocations, errors, and durations
+(Observability tab). Sentry captures unhandled errors from route
+handlers and React components once `NEXT_PUBLIC_SENTRY_DSN` is set.
+Convex function logs/errors: Convex dashboard → opulent-parakeet-508 →
+Logs.
 
 ## Env var reference
 
 | Var | Where | Purpose |
 |---|---|---|
-| `DEEPGRAM_API_KEY` | Fly secret | Server uses for Deepgram WS auth + REST preflight |
-| `ANTHROPIC_API_KEY` | Fly secret | `/api/translate` + `/api/summarize` upstream auth |
-| `LOOPS_API_KEY` | Fly secret | Password-reset email sender |
-| `LOOPS_PASSWORD_RESET_ID` | Fly secret | Loops transactional template ID |
-| `NEXT_PUBLIC_CONVEX_URL` | Fly build arg | Client embeds this; Convex realtime endpoint |
-| `NEXT_PUBLIC_CONVEX_SITE_URL` | Fly build arg | Convex HTTP actions endpoint (Auth callbacks) |
-| `NEXT_PUBLIC_SENTRY_DSN` | Fly build arg (optional) | Empty = Sentry off; non-empty = enabled |
-| `NEXT_PUBLIC_APP_URL` | Fly build arg | Used by sitemap, robots.txt |
+| `CONVEX_DEPLOY_KEY` | Vercel (Production only) | Lets the build deploy `convex/` to prod and injects `NEXT_PUBLIC_CONVEX_URL` |
+| `DEEPGRAM_API_KEY` | Vercel | Mints temp Deepgram keys for the browser WS + REST preflight |
+| `DEEPGRAM_PROJECT_ID` | Vercel (optional) | Skips the project-discovery REST call when minting temp keys |
+| `ANTHROPIC_API_KEY` | Vercel | `/api/translate`, `/api/summarize`, `/api/verify-citations` |
+| `OPENAI_API_KEY` | Vercel (optional) | `/api/tts` (natural read-aloud voice) + `/api/transcribe` (Whisper second pass). Unset → graceful fallback to Web Speech / Deepgram-only |
+| `SUNNAH_API_KEY` | Vercel (optional) | Hadith citation enrichment in translate/verify-citations. Unset → silently skipped |
+| `NEXT_PUBLIC_APP_URL` | Vercel | sitemap.ts / robots.ts canonical URL |
+| `NEXT_PUBLIC_SENTRY_DSN` | Vercel (optional) | Empty = Sentry off; non-empty = enabled |
+| `NEXT_PUBLIC_CONVEX_URL` | — (auto) | Injected by `convex deploy --cmd` during the Vercel build; do not set manually |
+| `NEXT_PUBLIC_VERCEL_ENV` | — (auto) | Vercel system var (needs "expose system env vars" on); Sentry environment tag |
 
-Convex env vars (these live in Convex itself, set via `npx convex env set ...`):
-| Var | Purpose |
-|---|---|
-| `JWT_PRIVATE_KEY`, `JWKS`, `SITE_URL` | Convex Auth session signing — set automatically by `npx @convex-dev/auth` |
-| `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` | Google OAuth — required for Google sign-in |
-| `LOOPS_API_KEY`, `LOOPS_PASSWORD_RESET_ID` | Same values as Fly secrets — Convex needs them too because `convex/passwordReset.ts` runs in Convex's runtime |
-
-Note that `LOOPS_*` lives in BOTH Fly secrets and Convex env. The Fly value
-isn't actually used (`convex/passwordReset.ts` runs server-side in Convex,
-not in our Next process), but setting it as a Fly secret is harmless and
-makes future refactors easier if password reset ever moves to a Next route.
+Convex prod env vars are listed in step 3 above. Local dev reads
+`.env.local` (same server keys, plus `CONVEX_DEPLOYMENT` /
+`NEXT_PUBLIC_CONVEX_URL` pointing at the dev deployment) and runs
+`npm run dev`, which starts `server.js` with the WebSocket proxy.
