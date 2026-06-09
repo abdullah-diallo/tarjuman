@@ -1,33 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../convex/_generated/api";
 import { COLORS } from "@/lib/constants";
 import { Icon } from "@/components/shared/icon";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 
 /**
  * Compact circular avatar in the top-right of the idle record screen.
- * Tap → opens a popover with email + Sign out.
- *
- * Kept minimal on purpose: full account settings (change password, delete
- * account, etc.) can come later. For MVP, just identity + sign-out.
+ * Tap → opens a popover with the user's identity, a link to Settings, and
+ * Sign out. Account management (edit name, delete account, preferences) lives
+ * on the /settings page reached from here.
  */
 export function AccountMenu() {
   const me = useQuery(api.users.me);
   const { signOut } = useAuthActions();
-  const deleteAccount = useMutation(api.users.deleteAccount);
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  // Two-step delete-account flow uses sequential confirm modals.
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [finalDeleteOpen, setFinalDeleteOpen] = useState(false);
-  const [deleteErrorOpen, setDeleteErrorOpen] = useState(false);
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState("");
   // OAuth profile images (Google, etc.) sometimes fail to load — expired
   // tokens, hotlink blocks, or offline. Without this, the browser renders
   // its default broken-image landscape icon, which looks awful in a 32px
@@ -52,34 +43,9 @@ export function AccountMenu() {
     router.replace("/login");
   };
 
-  const startDeleteFlow = () => {
+  const goToSettings = () => {
     setOpen(false);
-    setConfirmDeleteOpen(true);
-  };
-
-  // Step 1 → step 2: user confirmed the first dialog, escalate.
-  const escalateDeleteFlow = () => {
-    setConfirmDeleteOpen(false);
-    setFinalDeleteOpen(true);
-  };
-
-  // Step 2 → actually delete.
-  const performDelete = async () => {
-    setFinalDeleteOpen(false);
-    setDeleting(true);
-    try {
-      await deleteAccount({});
-      await signOut();
-      router.replace("/login");
-    } catch (e) {
-      setDeleting(false);
-      setDeleteErrorMessage(
-        `Couldn't delete your account: ${
-          e instanceof Error ? e.message : String(e)
-        }. Please try again or contact support.`
-      );
-      setDeleteErrorOpen(true);
-    }
+    router.push("/settings");
   };
 
   return (
@@ -146,6 +112,19 @@ export function AccountMenu() {
             </div>
             <button
               type="button"
+              onClick={goToSettings}
+              className="w-full px-4 py-3 flex items-center justify-between gap-2 text-left text-[13px] font-semibold cursor-pointer hover:bg-black/20 transition-colors"
+              style={{ color: COLORS.t2 }}
+            >
+              <span className="flex items-center gap-2">
+                <Icon name="settings" size={14} color={COLORS.t3} />
+                Settings
+              </span>
+              <Icon name="chevron" size={14} color={COLORS.t4} />
+            </button>
+            <div style={{ borderTop: `1px solid ${COLORS.border}` }} />
+            <button
+              type="button"
               onClick={handleSignOut}
               className="w-full px-4 py-3 flex items-center gap-2 text-left text-[13px] font-semibold cursor-pointer hover:bg-black/20 transition-colors"
               style={{ color: COLORS.t2 }}
@@ -153,50 +132,9 @@ export function AccountMenu() {
               <Icon name="close" size={14} color={COLORS.t3} />
               Sign out
             </button>
-            <div
-              style={{ borderTop: `1px solid ${COLORS.border}` }}
-            />
-            <button
-              type="button"
-              onClick={startDeleteFlow}
-              disabled={deleting}
-              className="w-full px-4 py-3 flex items-center gap-2 text-left text-[13px] font-semibold cursor-pointer hover:bg-black/20 transition-colors disabled:opacity-50"
-              style={{ color: COLORS.red }}
-            >
-              <Icon name="trash" size={14} color={COLORS.red} />
-              {deleting ? "Deleting…" : "Delete account"}
-            </button>
           </div>
         </>
       )}
-
-      <ConfirmDialog
-        open={confirmDeleteOpen}
-        onOpenChange={setConfirmDeleteOpen}
-        title="Delete your account?"
-        message="All your sessions, transcripts, and summaries will be permanently removed. This cannot be undone."
-        confirmLabel="Continue"
-        destructive
-        onConfirm={escalateDeleteFlow}
-      />
-      <ConfirmDialog
-        open={finalDeleteOpen}
-        onOpenChange={setFinalDeleteOpen}
-        title="Last chance"
-        message="Tap Delete to permanently erase your account and everything in it. There is no undo."
-        confirmLabel="Delete forever"
-        destructive
-        onConfirm={performDelete}
-      />
-      <ConfirmDialog
-        open={deleteErrorOpen}
-        onOpenChange={setDeleteErrorOpen}
-        title="Couldn't delete account"
-        message={deleteErrorMessage}
-        confirmLabel="OK"
-        cancelLabel={null}
-        onConfirm={() => setDeleteErrorOpen(false)}
-      />
     </div>
   );
 }

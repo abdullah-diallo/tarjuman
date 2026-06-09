@@ -54,4 +54,16 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_date", ["userId", "createdAt"])
     .index("by_date", ["createdAt"]),
+
+  // Per-user app preferences. One row per user (upserted). All fields optional
+  // so the row can be created lazily and new prefs can be added without a
+  // migration. Backed by Convex (not localStorage) so settings sync across
+  // devices and the planned native apps.
+  userPreferences: defineTable({
+    userId: v.id("users"),
+    defaultSourceLanguage: v.optional(v.string()),
+    defaultTargetLanguage: v.optional(v.string()),
+    ttsEnabled: v.optional(v.boolean()),
+    mainSpeakerOnly: v.optional(v.boolean()),
+  }).index("by_user", ["userId"]),
 });

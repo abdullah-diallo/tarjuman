@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { COLORS, SEGMENT_FLUSH_INTERVAL_MS } from "@/lib/constants";
@@ -24,8 +24,6 @@ import { useTranslator } from "@/hooks/use-translator";
 import { useSessionTimer } from "@/hooks/use-session-timer";
 import { useOpenaiTts } from "@/hooks/use-openai-tts";
 
-const TTS_PREF_KEY = "livetranscribe:tts-enabled";
-
 export default function RecordPage() {
   const [sourceLang, setSourceLang] = useState("ar");
   const [targetLang, setTargetLang] = useState("en");
@@ -43,22 +41,71 @@ export default function RecordPage() {
   const saveSummaryM = useMutation(api.sessions.saveSummary);
   const updateSegmentMerge = useMutation(api.sessions.updateSegmentMerge);
 
-  // Default TTS to ON — the user explicitly asked for live audio. They can
-  // mute it from the toggle in the recording shell; the choice persists.
-  const [ttsEnabled, setTtsEnabled] = useState(true);
+  // Per-user preferences (default languages + TTS), backed by Convex so they
+  // follow the user across devices and into the planned native apps.
+  const prefs = useQuery(api.preferences.get);
+  const updatePrefs = useMutation(api.preferences.update);
+
+  // Hydrate the language pair from saved defaults once, without clobbering a
+  // change the user makes during this visit.
+  const hydratedLangs = useRef(false);
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const stored = localStorage.getItem(TTS_PREF_KEY);
-    if (stored !== null) setTtsEnabled(stored === "1");
-  }, []);
+    if (hydratedLangs.current || prefs === undefined) return;
+    hydratedLangs.current = true;
+    if (prefs?.defaultSourceLanguage) setSourceLang(prefs.defaultSourceLanguage);
+    if (prefs?.defaultTargetLanguage) setTargetLang(prefs.defaultTargetLanguage);
+  }, [prefs]);
+
+  // Default TTS to ON — the user explicitly asked for live audio. They can
+  // mute it from the toggle in the recording shell or Settings; the choice
+  // persists per-user in Convex.
+  const [ttsEnabled, setTtsEnabled] = useState(true);
+  const hydratedTts = useRef(false);
+  useEffect(() => {
+    if (hydratedTts.current || prefs === undefined) return;
+    hydratedTts.current = true;
+    if (typeof prefs?.ttsEnabled === "boolean") {
+      setTtsEnabled(prefs.ttsEnabled);
+    } else if (typeof window !== "undefined") {
+      // One-time migration of the legacy localStorage pref into Convex.
+      const legacy = localStorage.getItem("livetranscribe:tts-enabled");
+      if (legacy !== null) {
+        const val = legacy === "1";
+        setTtsEnabled(val);
+        void updatePrefs({ ttsEnabled: val });
+      }
+    }
+  }, [prefs, updatePrefs]);
   const toggleTts = () => {
     setTtsEnabled((cur) => {
       const next = !cur;
-      try {
-        localStorage.setItem(TTS_PREF_KEY, next ? "1" : "0");
-      } catch {
-        /* private mode */
+      void updatePrefs({ ttsEnabled: next });
+      return next;
+    });
+  };
+
+  // Main-speaker filter — same Convex-backed pattern as TTS, lifted here from
+  // the recording shell so its state survives across recordings and devices.
+  const [mainSpeakerOnly, setMainSpeakerOnly] = useState(false);
+  const hydratedMain = useRef(false);
+  useEffect(() => {
+    if (hydratedMain.current || prefs === undefined) return;
+    hydratedMain.current = true;
+    if (typeof prefs?.mainSpeakerOnly === "boolean") {
+      setMainSpeakerOnly(prefs.mainSpeakerOnly);
+    } else if (typeof window !== "undefined") {
+      const legacy = localStorage.getItem("livetranscribe:main-speaker-only");
+      if (legacy !== null) {
+        const val = legacy === "1";
+        setMainSpeakerOnly(val);
+        void updatePrefs({ mainSpeakerOnly: val });
       }
+    }
+  }, [prefs, updatePrefs]);
+  const toggleMainSpeaker = () => {
+    setMainSpeakerOnly((cur) => {
+      const next = !cur;
+      void updatePrefs({ mainSpeakerOnly: next });
       return next;
     });
   };
@@ -384,6 +431,8 @@ export default function RecordPage() {
         filteredIds={translator.filteredIds}
         ttsEnabled={ttsEnabled}
         onTtsToggle={toggleTts}
+        mainSpeakerOnly={mainSpeakerOnly}
+        onMainSpeakerToggle={toggleMainSpeaker}
         onPause={handlePause}
         onResume={handleResume}
         onStop={handleStop}

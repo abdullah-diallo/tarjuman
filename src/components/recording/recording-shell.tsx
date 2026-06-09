@@ -35,12 +35,13 @@ interface RecordingShellProps {
   /** Whether translation TTS is on. Controlled by parent via `onTtsToggle`. */
   ttsEnabled: boolean;
   onTtsToggle: () => void;
+  /** Whether to keep only the dominant speaker. Controlled by the parent. */
+  mainSpeakerOnly: boolean;
+  onMainSpeakerToggle: () => void;
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
 }
-
-const MAIN_SPEAKER_PREF_KEY = "livetranscribe:main-speaker-only";
 
 export function RecordingShell({
   sourceLang,
@@ -59,32 +60,14 @@ export function RecordingShell({
   filteredIds,
   ttsEnabled,
   onTtsToggle,
+  mainSpeakerOnly,
+  onMainSpeakerToggle,
   onPause,
   onResume,
   onStop,
 }: RecordingShellProps) {
   const elapsed = useSessionTimer(active, paused);
   const [pulsePhase, setPulsePhase] = useState(0);
-  const [mainSpeakerOnly, setMainSpeakerOnly] = useState(false);
-
-  // Hydrate the toggle preference from localStorage so it persists across
-  // sessions. Done after mount to avoid SSR/hydration mismatch.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setMainSpeakerOnly(localStorage.getItem(MAIN_SPEAKER_PREF_KEY) === "1");
-  }, []);
-
-  const toggleMainSpeaker = () => {
-    setMainSpeakerOnly((cur) => {
-      const next = !cur;
-      try {
-        localStorage.setItem(MAIN_SPEAKER_PREF_KEY, next ? "1" : "0");
-      } catch {
-        /* private mode */
-      }
-      return next;
-    });
-  };
 
   // Show the toggle only once we've actually seen multiple speakers — so
   // single-speaker sessions stay uncluttered.
@@ -249,7 +232,7 @@ export function RecordingShell({
           </span>
           <button
             type="button"
-            onClick={toggleMainSpeaker}
+            onClick={onMainSpeakerToggle}
             className="text-[11px] font-semibold px-3 py-1 rounded-md cursor-pointer transition-colors"
             style={{
               background: mainSpeakerOnly

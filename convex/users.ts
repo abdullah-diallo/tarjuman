@@ -47,6 +47,22 @@ export const me = query({
 });
 
 /**
+ * Updates the signed-in user's display name. The name shows in the account
+ * menu/avatar and on the settings page. Empty names are rejected so the UI
+ * always has something to render.
+ */
+export const updateProfile = mutation({
+  args: { name: v.string() },
+  handler: async (ctx, { name }) => {
+    const userId = await auth.getUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error("Name cannot be empty");
+    await ctx.db.patch(userId, { name: trimmed });
+  },
+});
+
+/**
  * Deletes the signed-in user's account and all their session data.
  *
  * GDPR Art. 17 (right to erasure) requires this. Cascade-deletes:
@@ -92,6 +108,15 @@ export const deleteAccount = mutation({
       .collect();
     for (const s of authSessions) {
       await ctx.db.delete(s._id);
+    }
+
+    // Per-user preferences row (one or none).
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const p of prefs) {
+      await ctx.db.delete(p._id);
     }
 
     await ctx.db.delete(userId);
