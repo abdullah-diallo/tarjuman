@@ -161,7 +161,10 @@ export function useDeepgram({
   // Rolling PCM buffer mirroring what's sent to Deepgram. Lives across
   // WS reconnects; reset on enabled=false or unmount. The translator
   // slices this per segment for parallel Whisper transcription.
-  const audioBufferRef = useRef<RollingAudioBuffer>(new RollingAudioBuffer());
+  // Lazy useState (not a ref): the instance is returned from the hook, and
+  // reading a ref during render is forbidden. The setter is never used —
+  // the instance is mutated in place and lives for the hook's lifetime.
+  const [audioBuffer] = useState(() => new RollingAudioBuffer());
 
   // Session-wide speaker lock. Once locked, segments where the dominant
   // speaker isn't the locked speaker are dropped (per user policy: "ignore
@@ -186,14 +189,14 @@ export function useDeepgram({
       lockedSpeakerRef.current = null;
       speakerDurationsRef.current = new Map();
       sessionStartRef.current = null;
-      audioBufferRef.current.reset();
+      audioBuffer.reset();
       return;
     }
 
     const myGeneration = ++generationRef.current;
     const isLive = () => generationRef.current === myGeneration;
     sessionStartRef.current = Date.now();
-    audioBufferRef.current.reset();
+    audioBuffer.reset();
 
     // Closure-local state. NOT refs. This entire block is torn down on
     // the next mount, and nothing leaks into the re-mount.
@@ -352,7 +355,7 @@ export function useDeepgram({
           currentWs.send(data);
           // Mirror the same frame into the rolling audio buffer so the
           // translator can later slice it for parallel Whisper transcription.
-          audioBufferRef.current.push(new Int16Array(data));
+          audioBuffer.push(new Int16Array(data));
         };
       };
 
@@ -586,7 +589,7 @@ export function useDeepgram({
       cancelled = true;
       tearDown();
     };
-  }, [pcmNode, sourceLanguage, enabled]);
+  }, [pcmNode, sourceLanguage, enabled, audioBuffer]);
 
   // Pause/resume effect — does NOT trigger a reconnect. It flips the
   // pausedRef the worklet handler reads, and owns the KeepAlive timer
@@ -614,6 +617,6 @@ export function useDeepgram({
     error,
     reconnectAttempt,
     resetTranscript,
-    audioBuffer: audioBufferRef.current,
+    audioBuffer,
   };
 }

@@ -12,7 +12,18 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Design prototype at the repo root — the visual source of truth per
+    // CLAUDE.md, never compiled or shipped. Not held to app lint standards.
+    "prototype.tsx",
   ]),
+  {
+    // Plain CommonJS Node entrypoint (package.json has no "type": "module");
+    // require() is the correct import form here.
+    files: ["server.js"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
   {
     rules: {
       // React 19's set-state-in-effect rule fires on legitimate external-sync

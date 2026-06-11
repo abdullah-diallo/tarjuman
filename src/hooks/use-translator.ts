@@ -262,6 +262,7 @@ export function useTranslator({
     errors,
     filteredIds,
     authToken,
+    audioBuffer,
   ]);
 
   // Derive the suppressed set from the merge records. Cheap; recomputes

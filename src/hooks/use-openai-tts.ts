@@ -82,26 +82,6 @@ export function useOpenaiTts({
     else void a.play().catch(() => {});
   }, [paused, enabled]);
 
-  // Watch items for new ones to speak.
-  useEffect(() => {
-    if (!enabled) return;
-    const played = playedIdsRef.current;
-    const fallbacks = fallbackIdsRef.current;
-    for (const item of items) {
-      if (played.has(item.id) || fallbacks.has(item.id)) continue;
-      if (!item.text || !item.text.trim()) {
-        played.add(item.id);
-        continue;
-      }
-      played.add(item.id);
-      queueRef.current.push({ id: item.id, text: item.text });
-    }
-    void drainQueue();
-    // We intentionally don't depend on authToken — token changes shouldn't
-    // re-process the queue.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, enabled]);
-
   const drainQueue = async () => {
     if (isProcessingRef.current) return;
     isProcessingRef.current = true;
@@ -181,4 +161,25 @@ export function useOpenaiTts({
     fallbackIdsRef.current.add(id);
     setFallbackItems((prev) => [...prev, { id, text }]);
   };
+
+  // Watch items for new ones to speak. Declared after drainQueue/playOne/
+  // markFallback so the effect body doesn't reference them before declaration.
+  useEffect(() => {
+    if (!enabled) return;
+    const played = playedIdsRef.current;
+    const fallbacks = fallbackIdsRef.current;
+    for (const item of items) {
+      if (played.has(item.id) || fallbacks.has(item.id)) continue;
+      if (!item.text || !item.text.trim()) {
+        played.add(item.id);
+        continue;
+      }
+      played.add(item.id);
+      queueRef.current.push({ id: item.id, text: item.text });
+    }
+    void drainQueue();
+    // We intentionally don't depend on authToken — token changes shouldn't
+    // re-process the queue.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, enabled]);
 }
