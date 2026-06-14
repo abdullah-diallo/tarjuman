@@ -12,11 +12,11 @@ export type FaqItem = { q: string; a: string };
 export const FAQ_ITEMS: FaqItem[] = [
   {
     q: "Can I translate a khutbah in real time?",
-    a: "Yes. Tarjuman listens to the khutbah and shows the Arabic transcription alongside an English translation on screen as the khateeb speaks, so you follow along live instead of waiting for notes afterward.",
+    a: "Yes. Tarjuman listens to the khutbah and shows the Arabic transcription alongside an English translation on screen as the khateeb speaks, so you follow along live — whether it's the Friday khutbah, a duroos or a class — instead of waiting for notes afterward.",
   },
   {
     q: "Does it work in a noisy masjid or lecture hall?",
-    a: "It's built for audio coming through PA speakers in reverberant rooms. Tarjuman runs the microphone through a noise-cleaning pipeline — high-pass, low-pass, compression and gain — and shows a live signal meter so you can position your phone for the clearest capture.",
+    a: "It's built for audio coming through PA speakers in reverberant rooms. Tarjuman runs the microphone through a noise-cleaning pipeline — high-pass, low-pass, compression and gain — and shows a live signal meter so you can position your phone for the clearest capture when recording in a masjid or lecture hall.",
   },
   {
     q: "Which languages does it support?",
@@ -32,6 +32,6 @@ export const FAQ_ITEMS: FaqItem[] = [
   },
   {
     q: "Is Tarjuman free?",
-    a: "Tarjuman is free to start. Open the recorder, pick your languages, and tap record — you can transcribe, translate and generate a summary right away.",
+    a: "Tarjuman is free to start. Open the recorder, pick your languages, and tap record — you can transcribe, translate and generate a summary of a khutbah or lecture right away.",
   },
 ];

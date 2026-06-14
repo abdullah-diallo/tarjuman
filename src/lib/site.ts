@@ -43,4 +43,10 @@ export const KEYWORDS = [
   "khutbah notes app",
   "Quran lecture translation",
   "real-time speech translation",
+  "khutbah recording app",
+  "Jumu'ah transcription",
+  "Friday sermon translator",
+  "Arabic speech to text",
+  "Islamic sermon notes app",
+  "Arabic to English live translator",
 ];
