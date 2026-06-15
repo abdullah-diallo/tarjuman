@@ -23,7 +23,7 @@ import { useRecorder } from "@/hooks/use-recorder";
 import { useDeepgram } from "@/hooks/use-deepgram";
 import { useTranslator } from "@/hooks/use-translator";
 import { useSessionTimer } from "@/hooks/use-session-timer";
-import { useOpenaiTts } from "@/hooks/use-openai-tts";
+import { useTts } from "@/hooks/use-tts";
 
 export default function RecordPage() {
   const [sourceLang, setSourceLang] = useState("ar");
@@ -168,11 +168,6 @@ export default function RecordPage() {
     segments: deepgram.segments,
     sourceLanguage: sourceLang,
     targetLanguage: targetLang,
-    // Parallel-engine pass: hand the rolling PCM buffer to the translator
-    // so each segment also gets a Whisper transcription; Claude reconciles
-    // both Arabic versions before translating. Falls back silently to
-    // Deepgram-only when OPENAI_API_KEY isn't set.
-    audioBuffer: deepgram.audioBuffer,
   });
 
   // Live audio of translations.
@@ -184,11 +179,10 @@ export default function RecordPage() {
       })),
     [translator.translations]
   );
-  // OpenAI TTS for natural-sounding voice output, with automatic fallback
-  // to the browser's Web Speech API when OPENAI_API_KEY isn't set or the
-  // upstream call fails. Same trigger as the old useTts — translator items
-  // arriving in `ttsItems` get spoken in arrival order.
-  useOpenaiTts({
+  // Read translations aloud via the browser's Web Speech API (male voice
+  // only — enforced in use-tts). Translator items arriving in `ttsItems`
+  // are spoken in arrival order.
+  useTts({
     enabled: ttsEnabled && isActive,
     paused: recorder.phase === "paused",
     language: targetLang,

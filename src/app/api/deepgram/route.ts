@@ -109,7 +109,7 @@ export async function GET(req: Request) {
   // Gate like every other paid-upstream route: in production this mints a real
   // Deepgram usage:write key, so without auth an attacker who finds the URL
   // could mint keys in a loop and drain the Deepgram budget. Require a
-  // signed-in user + per-user rate limit (same pattern as /api/transcribe).
+  // signed-in user + per-user rate limit (same pattern as /api/translate).
   const auth = await requireAuthFromHeader(req);
   if (!auth) {
     return NextResponse.json(
@@ -173,9 +173,7 @@ export async function GET(req: Request) {
     // Off-language filtering is therefore layered downstream:
     //   1. FINAL_CONFIDENCE_THRESHOLD (0.55) + speaker-lock + interim
     //      confidence floor in use-deepgram.ts
-    //   2. Whisper auto-detected-language drop in use-translator.ts
-    //      (the second STT engine runs unhinted and reports the real language)
-    //   3. script-ratio + LLM transliteration/noise verdict in /api/translate
+    //   2. script-ratio + LLM transliteration/noise verdict in /api/translate
   });
   const deepgramUrl = `wss://api.deepgram.com/v1/listen?${dgParams.toString()}`;
 

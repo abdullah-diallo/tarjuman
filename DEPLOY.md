@@ -64,7 +64,6 @@ CONVEX_DEPLOY_KEY      (Production only — from Convex dashboard →
                         opulent-parakeet-508 → Settings → Deploy key)
 DEEPGRAM_API_KEY       your Deepgram key
 ANTHROPIC_API_KEY      sk-ant-api03-...
-OPENAI_API_KEY         sk-proj-...        (optional but recommended)
 SUNNAH_API_KEY         sunnah.com key     (optional)
 DEEPGRAM_PROJECT_ID    Deepgram project id (optional)
 NEXT_PUBLIC_APP_URL    https://tarjuman.live
@@ -129,8 +128,8 @@ Open https://tarjuman.live and try:
 - [ ] Tap record → grant mic → speak Arabic → see transcript + translation
       (confirms temp-key minting + direct Deepgram WS works on Vercel)
 - [ ] Stop → Generate Summary → summary appears
-- [ ] Read-aloud uses the OpenAI `onyx` voice, not the robotic browser
-      voice (confirms `OPENAI_API_KEY` is set — falls back silently if not)
+- [ ] Read-aloud speaks the translation via the browser's Web Speech voice
+      (male voice only; silent if no male voice is installed for the language)
 - [ ] History tab shows the session
 - [ ] Tap session → detail page loads with transcript + summary
 - [ ] Sign out → Sign back in → history persists
@@ -188,7 +187,6 @@ Logs.
 | `DEEPGRAM_API_KEY` | Vercel | Mints temp Deepgram keys for the browser WS + REST preflight |
 | `DEEPGRAM_PROJECT_ID` | Vercel (optional) | Skips the project-discovery REST call when minting temp keys |
 | `ANTHROPIC_API_KEY` | Vercel | `/api/translate`, `/api/summarize`, `/api/verify-citations` |
-| `OPENAI_API_KEY` | Vercel (optional) | `/api/tts` (natural read-aloud voice) + `/api/transcribe` (Whisper second pass). Unset → graceful fallback to Web Speech / Deepgram-only |
 | `SUNNAH_API_KEY` | Vercel (optional) | Hadith citation enrichment in translate/verify-citations. Unset → silently skipped |
 | `NEXT_PUBLIC_APP_URL` | Vercel | sitemap.ts / robots.ts canonical URL (`https://tarjuman.live`) |
 | `NEXT_PUBLIC_SENTRY_DSN` | Vercel (optional) | Empty = Sentry off; non-empty = enabled |

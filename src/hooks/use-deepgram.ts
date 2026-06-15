@@ -7,7 +7,6 @@ import {
   DEEPGRAM_KEEPALIVE_INTERVAL_MS,
   RECONNECT_BACKOFF,
 } from "@/lib/constants";
-import { RollingAudioBuffer } from "@/lib/audio-buffer";
 
 export interface UseDeepgramOptions {
   /**
@@ -35,12 +34,6 @@ export interface UseDeepgramReturn {
   error: string | null;
   reconnectAttempt: number;
   resetTranscript: () => void;
-  /**
-   * Rolling buffer of recent PCM audio (mirrors what's sent to Deepgram).
-   * The translator slices the matching window per segment and sends it to
-   * OpenAI Whisper for a parallel transcription, then Claude reconciles.
-   */
-  audioBuffer: RollingAudioBuffer;
 }
 
 interface DeepgramWord {
@@ -168,14 +161,6 @@ export function useDeepgram({
   // without re-establishing the WS each time it flips.
   const pausedRef = useRef(false);
 
-  // Rolling PCM buffer mirroring what's sent to Deepgram. Lives across
-  // WS reconnects; reset on enabled=false or unmount. The translator
-  // slices this per segment for parallel Whisper transcription.
-  // Lazy useState (not a ref): the instance is returned from the hook, and
-  // reading a ref during render is forbidden. The setter is never used —
-  // the instance is mutated in place and lives for the hook's lifetime.
-  const [audioBuffer] = useState(() => new RollingAudioBuffer());
-
   // Session-wide speaker lock. Once locked, segments where the dominant
   // speaker isn't the locked speaker are dropped (per user policy: "ignore
   // side conversations"). Refs survive WS reconnects within the same session
@@ -199,14 +184,12 @@ export function useDeepgram({
       lockedSpeakerRef.current = null;
       speakerDurationsRef.current = new Map();
       sessionStartRef.current = null;
-      audioBuffer.reset();
       return;
     }
 
     const myGeneration = ++generationRef.current;
     const isLive = () => generationRef.current === myGeneration;
     sessionStartRef.current = Date.now();
-    audioBuffer.reset();
 
     // Closure-local state. NOT refs. This entire block is torn down on
     // the next mount, and nothing leaks into the re-mount.
@@ -367,9 +350,6 @@ export function useDeepgram({
           const data = event.data as ArrayBuffer;
           if (!data || data.byteLength === 0) return;
           currentWs.send(data);
-          // Mirror the same frame into the rolling audio buffer so the
-          // translator can later slice it for parallel Whisper transcription.
-          audioBuffer.push(new Int16Array(data));
         };
       };
 
@@ -404,8 +384,8 @@ export function useDeepgram({
           // no longer sends (nova-3 rejects it alongside a fixed language=,
           // and language=multi has no Arabic support as of mid-2026). Kept
           // as a free defense in case the params ever change. The live
-          // off-language filtering happens downstream: Whisper language-ID
-          // drop in use-translator.ts + script/LLM filters in /api/translate.
+          // off-language filtering happens downstream: the script-ratio +
+          // LLM transliteration/noise verdict in /api/translate.
           const detectedLang = msg.channel.detected_language;
           const langConf = msg.channel.language_confidence ?? 0;
           if (
@@ -603,7 +583,7 @@ export function useDeepgram({
       cancelled = true;
       tearDown();
     };
-  }, [pcmNode, sourceLanguage, enabled, audioBuffer]);
+  }, [pcmNode, sourceLanguage, enabled]);
 
   // Pause/resume effect — does NOT trigger a reconnect. It flips the
   // pausedRef the worklet handler reads, and owns the KeepAlive timer
@@ -631,6 +611,5 @@ export function useDeepgram({
     error,
     reconnectAttempt,
     resetTranscript,
-    audioBuffer,
   };
 }
