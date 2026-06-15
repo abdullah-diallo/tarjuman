@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Curated list of known male system voices keyed by lowercased platform name.
@@ -125,6 +125,11 @@ export function useTts({
 
   // Cache of available voices; refreshed on the `voiceschanged` event.
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  // Bumped when the browser populates the voice list asynchronously. Drives a
+  // re-run of the items effect so segments queued during the cold-voice window
+  // (Chromium / Android return [] from getVoices() until 'voiceschanged' fires)
+  // get spoken once a voice is available, instead of being silently skipped.
+  const [voicesVersion, setVoicesVersion] = useState(0);
 
   // Load voice list on mount + when the browser populates it asynchronously.
   useEffect(() => {
@@ -132,6 +137,7 @@ export function useTts({
     if (typeof speechSynthesis === "undefined") return;
     const refresh = () => {
       voicesRef.current = speechSynthesis.getVoices();
+      setVoicesVersion((n) => n + 1);
     };
     refresh();
     speechSynthesis.addEventListener("voiceschanged", refresh);
@@ -184,9 +190,21 @@ export function useTts({
         spoken.add(item.id);
         continue;
       }
-      spoken.add(item.id);
+      // Voices may not be loaded yet (Chromium / Android return [] from
+      // getVoices() until 'voiceschanged'). Do NOT mark this item spoken —
+      // leave it un-marked so the voicesVersion bump re-runs this effect and
+      // speaks it once a voice is available, instead of dropping it silently.
+      if (voicesRef.current.length === 0) continue;
       const voice = pickVoice(language);
-      if (!voice) continue; // male-only policy: skip if no known male voice
+      if (!voice) {
+        // Voices ARE loaded but there's no known male voice for this language —
+        // permanent skip per the male-only policy. Mark spoken so we don't
+        // re-evaluate it on every render.
+        spoken.add(item.id);
+        continue;
+      }
+      // Mark spoken only once we actually hand it to the synth.
+      spoken.add(item.id);
       try {
         const utt = new SpeechSynthesisUtterance(item.text);
         utt.lang = language;
@@ -198,7 +216,7 @@ export function useTts({
         // before any prior speak. Not fatal — will retry on next item.
       }
     }
-  }, [items, enabled, language, rate]);
+  }, [items, enabled, language, rate, voicesVersion]);
 
   // Pause / resume the active synth queue, preserving order.
   useEffect(() => {

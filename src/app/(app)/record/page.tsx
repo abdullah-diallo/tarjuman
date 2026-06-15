@@ -355,6 +355,7 @@ export default function RecordPage() {
       segments: deepgram.segments,
       translations: translator.translations,
       merges: translator.merges,
+      filteredIds: translator.filteredIds,
       sourceLang,
       targetLang,
     };
@@ -387,6 +388,7 @@ export default function RecordPage() {
         segments: captured.segments,
         translations: captured.translations,
         merges: captured.merges,
+        filteredIds: captured.filteredIds,
         durationSec: finalDuration,
         sourceLang: captured.sourceLang,
         targetLang: captured.targetLang,

@@ -20,6 +20,9 @@ export interface CompletedSession {
   durationSec: number;
   sourceLang: string;
   targetLang: string;
+  /** Segment ids the server filtered as noise / off-language. Hidden here too,
+   *  matching the live transcript and persistence (which already drop them). */
+  filteredIds?: Set<string>;
 }
 
 interface CompletedViewProps {
@@ -39,7 +42,7 @@ export function CompletedView({
   const normalizedSegments = useMemo(
     () =>
       session.segments
-        .filter((s) => s.isFinal)
+        .filter((s) => s.isFinal && !session.filteredIds?.has(s.id))
         .map((s) => {
           const merge = session.merges?.[s.id];
           return {
@@ -55,7 +58,7 @@ export function CompletedView({
               : {}),
           };
         }),
-    [session.segments, session.translations, session.merges]
+    [session.segments, session.translations, session.merges, session.filteredIds]
   );
 
   const handleCopy = async () => {
