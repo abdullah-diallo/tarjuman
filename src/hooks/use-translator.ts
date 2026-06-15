@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthToken } from "@convex-dev/auth/react";
 import type { LiveSegment } from "@/types";
 import type { RollingAudioBuffer } from "@/lib/audio-buffer";
@@ -55,6 +55,8 @@ export interface UseTranslatorReturn {
    */
   filteredIds: Set<string>;
   reset: () => void;
+  /** Clear a segment's error so the effect re-attempts its translation. */
+  retry: (id: string) => void;
 }
 
 /**
@@ -93,6 +95,18 @@ export function useTranslator({
     inFlightRef.current = new Set();
     forcePendingRender((n) => n + 1);
   };
+
+  // Clear a segment's recorded error so the translate effect picks it up again
+  // (the effect skips ids that already have an error). Drives the "tap to
+  // retry" affordance on a failed translation card.
+  const retry = useCallback((id: string) => {
+    setErrors((prev) => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (sourceLanguage === targetLanguage) {
@@ -193,24 +207,53 @@ export function useTranslator({
           }
           const alternativeText = whisper?.text;
 
-          const res = await fetch("/api/translate", {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              text: seg.text,
-              source: sourceLanguage,
-              target: targetLanguage,
-              context: requestContext.length > 0 ? requestContext : undefined,
-              alternativeText,
-            }),
+          // Up to 3 attempts. Retry transient failures (network throw / 5xx /
+          // 429) with a short backoff so a blip doesn't permanently blank the
+          // segment; a 4xx (e.g. 401 auth) fails fast — retrying won't help.
+          const TRANSLATE_ATTEMPTS = 3;
+          const body = JSON.stringify({
+            text: seg.text,
+            source: sourceLanguage,
+            target: targetLanguage,
+            context: requestContext.length > 0 ? requestContext : undefined,
+            alternativeText,
           });
-          if (cancelled) return;
-          const data = (await res.json().catch(() => ({}))) as {
+          let res: Response | null = null;
+          let data: {
             translatedText?: string;
             merge?: MergeRecord;
             filtered?: boolean;
             error?: string;
-          };
+          } = {};
+          for (let attempt = 1; attempt <= TRANSLATE_ATTEMPTS; attempt++) {
+            try {
+              const r = await fetch("/api/translate", {
+                method: "POST",
+                headers,
+                body,
+              });
+              if (cancelled) return;
+              const d = (await r.json().catch(() => ({}))) as typeof data;
+              // Keep the result on success, on a non-retryable 4xx, or after
+              // the final attempt. Otherwise fall through to back off + retry.
+              if (
+                r.ok ||
+                !(r.status >= 500 || r.status === 429) ||
+                attempt === TRANSLATE_ATTEMPTS
+              ) {
+                res = r;
+                data = d;
+                break;
+              }
+            } catch (netErr) {
+              // Network-level failure: retry unless this was the last attempt,
+              // in which case let the outer catch record the error.
+              if (attempt === TRANSLATE_ATTEMPTS) throw netErr;
+            }
+            await new Promise((rs) => setTimeout(rs, 400 * attempt));
+          }
+          if (cancelled || !res) return;
+
           if (!res.ok) {
             const msg = data.error ?? `Translation failed (${res.status})`;
             setErrors((prev) => ({ ...prev, [seg.id]: msg }));
@@ -283,6 +326,7 @@ export function useTranslator({
     suppressedIds,
     filteredIds,
     reset,
+    retry,
   };
 }
 

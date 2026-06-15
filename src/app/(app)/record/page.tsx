@@ -443,6 +443,9 @@ export default function RecordPage() {
         merges={translator.merges}
         suppressedIds={translator.suppressedIds}
         filteredIds={translator.filteredIds}
+        errors={translator.errors}
+        pending={translator.pending}
+        onRetry={translator.retry}
         ttsEnabled={ttsEnabled}
         onTtsToggle={toggleTts}
         mainSpeakerOnly={mainSpeakerOnly}

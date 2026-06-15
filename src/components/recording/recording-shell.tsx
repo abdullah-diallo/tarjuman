@@ -32,6 +32,12 @@ interface RecordingShellProps {
   suppressedIds?: Set<string>;
   /** Segments filtered as noise server-side (single-word / off-language). */
   filteredIds?: Set<string>;
+  /** Segment id → translation error (failed after retries). */
+  errors?: Record<string, string>;
+  /** Segment ids whose translation is currently in flight. */
+  pending?: Set<string>;
+  /** Clear a segment's error and re-attempt its translation. */
+  onRetry?: (id: string) => void;
   /** Whether translation TTS is on. Controlled by parent via `onTtsToggle`. */
   ttsEnabled: boolean;
   onTtsToggle: () => void;
@@ -58,6 +64,9 @@ export function RecordingShell({
   merges,
   suppressedIds,
   filteredIds,
+  errors,
+  pending,
+  onRetry,
   ttsEnabled,
   onTtsToggle,
   mainSpeakerOnly,
@@ -259,6 +268,9 @@ export function RecordingShell({
         merges={merges}
         suppressedIds={suppressedIds}
         filteredIds={filteredIds}
+        errors={errors}
+        pending={pending}
+        onRetry={onRetry}
         mainSpeakerOnly={mainSpeakerOnly}
       />
 

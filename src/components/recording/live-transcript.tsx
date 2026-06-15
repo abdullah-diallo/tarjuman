@@ -27,6 +27,12 @@ interface LiveTranscriptProps {
   suppressedIds?: Set<string>;
   /** Segments filtered as noise (too short / off-language) — hide entirely. */
   filteredIds?: Set<string>;
+  /** Segment id → translation error message (failed after retries). */
+  errors?: Record<string, string>;
+  /** Segment ids whose translation is currently in flight. */
+  pending?: Set<string>;
+  /** Clear a segment's error and re-attempt its translation (tap to retry). */
+  onRetry?: (id: string) => void;
 }
 
 const SPEAKER_COLORS = [
@@ -96,6 +102,9 @@ export function LiveTranscript({
   merges,
   suppressedIds,
   filteredIds,
+  errors,
+  pending,
+  onRetry,
 }: LiveTranscriptProps) {
   const { scrollRef, onScroll, isStuck, scrollToBottom } =
     useStickyBottom<HTMLDivElement>(200);
@@ -196,7 +205,7 @@ export function LiveTranscript({
                   {sourceTextForDisplay}
                 </div>
               </div>
-              {translated !== undefined && (
+              {translated !== undefined ? (
                 <div
                   className="px-4 py-3 rounded-2xl"
                   style={{
@@ -221,7 +230,44 @@ export function LiveTranscript({
                         : translated}
                   </div>
                 </div>
-              )}
+              ) : errors?.[seg.id] ? (
+                // Translation failed (after retries) — show it instead of a
+                // silent gap, and let the user tap to re-attempt.
+                <button
+                  type="button"
+                  onClick={() => onRetry?.(seg.id)}
+                  className="w-full text-left px-4 py-3 rounded-2xl cursor-pointer transition active:scale-[0.99]"
+                  style={{
+                    background: `${COLORS.amber}14`,
+                    borderLeft: `3px solid ${COLORS.amber}66`,
+                  }}
+                >
+                  <div
+                    className="text-[13px] font-semibold"
+                    style={{ color: COLORS.amber }}
+                  >
+                    Translation failed — tap to retry
+                  </div>
+                  <div
+                    className="text-[11px] mt-1 break-words"
+                    style={{ color: COLORS.t3 }}
+                  >
+                    {errors[seg.id]}
+                  </div>
+                </button>
+              ) : pending?.has(seg.id) ? (
+                <div
+                  className="px-4 py-3 rounded-2xl"
+                  style={{
+                    background: `${COLORS.accent}10`,
+                    borderLeft: `3px solid ${COLORS.accent}66`,
+                  }}
+                >
+                  <div className="text-[14px]" style={{ color: COLORS.t3 }}>
+                    …translating
+                  </div>
+                </div>
+              ) : null}
             </div>
           );
         })}
