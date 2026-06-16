@@ -259,36 +259,54 @@ export function useTranslator({
               break;
             }
 
-            // Non-streamed JSON success = the source===target passthrough.
-            const ctype = r.headers.get("Content-Type") ?? "";
-            if (!ctype.startsWith("text/plain") || !r.body) {
-              const d = (await r.json().catch(() => ({}))) as Parameters<
-                typeof applyResult
-              >[0];
+            // Read the body and decide the shape by CONTENT, NOT the
+            // Content-Type header. Next 16 behind the custom server can drop or
+            // rewrite Content-Type on a streamed Response, which previously sent
+            // a streamed (text/plain) body down the JSON branch → JSON.parse of
+            // prose threw → silent `{}` → "Translator returned no text" on every
+            // segment. The durable contract is the in-band META_SENTINEL:
+            //   - body contains META_SENTINEL → streamed translation + trailer
+            //   - no sentinel → a small JSON body (source===target passthrough,
+            //     or a noise-filter result)
+            if (!r.body) {
+              const d = (await r.json().catch(() => null)) as
+                | Parameters<typeof applyResult>[0]
+                | null;
+              if (!d) {
+                clearPartial();
+                setErrors((prev) => ({
+                  ...prev,
+                  [seg.id]: "Malformed translation response",
+                }));
+                break;
+              }
               applyResult(d);
               break;
             }
 
-            // Streamed success: show plain-text deltas progressively, then the
-            // META_SENTINEL trailer carries the final enriched text + merge.
             const reader = r.body.getReader();
             const decoder = new TextDecoder();
             let acc = "";
             let sentinelAt = -1;
+            let looksLikeJson = false;
             try {
               while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 acc += decoder.decode(value, { stream: true });
-                if (sentinelAt === -1) {
-                  sentinelAt = acc.indexOf(META_SENTINEL);
-                  // Progressive update — first delta clears "…translating".
-                  const visible =
-                    sentinelAt === -1 ? acc : acc.slice(0, sentinelAt);
+                if (sentinelAt === -1) sentinelAt = acc.indexOf(META_SENTINEL);
+                // Progressive display only for the streamed prose shape — never
+                // render a JSON body (passthrough/filtered) as the translation.
+                if (sentinelAt !== -1) {
+                  const visible = acc.slice(0, sentinelAt);
                   setTranslations((prev) =>
-                    prev[seg.id] === visible
-                      ? prev
-                      : { ...prev, [seg.id]: visible }
+                    prev[seg.id] === visible ? prev : { ...prev, [seg.id]: visible }
+                  );
+                } else if (!looksLikeJson && acc.trimStart().startsWith("{")) {
+                  looksLikeJson = true; // JSON body — wait for it whole, don't show
+                } else if (!looksLikeJson) {
+                  setTranslations((prev) =>
+                    prev[seg.id] === acc ? prev : { ...prev, [seg.id]: acc }
                   );
                 }
               }
@@ -302,26 +320,36 @@ export function useTranslator({
             }
 
             const idx = acc.indexOf(META_SENTINEL);
-            if (idx === -1) {
-              clearPartial();
-              setErrors((prev) => ({
-                ...prev,
-                [seg.id]: "Translation incomplete",
-              }));
-              break;
+            if (idx !== -1) {
+              // Streamed shape: parse the metadata trailer.
+              let meta: Parameters<typeof applyResult>[0];
+              try {
+                meta = JSON.parse(acc.slice(idx + META_SENTINEL.length));
+              } catch {
+                clearPartial();
+                setErrors((prev) => ({
+                  ...prev,
+                  [seg.id]: "Malformed translation trailer",
+                }));
+                break;
+              }
+              applyResult(meta);
+            } else {
+              // No sentinel → a plain JSON body. Parse it; an empty/garbled body
+              // is an explicit error, never a silent {} that reads as "no text".
+              let d: Parameters<typeof applyResult>[0];
+              try {
+                d = JSON.parse(acc);
+              } catch {
+                clearPartial();
+                setErrors((prev) => ({
+                  ...prev,
+                  [seg.id]: "Malformed translation response",
+                }));
+                break;
+              }
+              applyResult(d);
             }
-            let meta: Parameters<typeof applyResult>[0] = {};
-            try {
-              meta = JSON.parse(acc.slice(idx + META_SENTINEL.length));
-            } catch {
-              clearPartial();
-              setErrors((prev) => ({
-                ...prev,
-                [seg.id]: "Malformed translation trailer",
-              }));
-              break;
-            }
-            applyResult(meta);
             break;
           }
         } catch (e) {

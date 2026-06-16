@@ -97,6 +97,13 @@ const INTERIM_CONFIDENCE_THRESHOLD = 0.4;
 const SPEAKER_LOCK_WARMUP_MS = 15_000;
 /** Lock policy: minimum speech duration (seconds) before any speaker can be locked. */
 const SPEAKER_LOCK_MIN_DURATION_S = 5;
+/**
+ * Deepgram's LIVE diarizer ascribes all speech to speaker 0 for the first
+ * ~20-30s, then re-clusters and may re-number the SAME speaker to a higher
+ * index. Ignore diarization (no lock accounting, no per-segment speaker id)
+ * within this window so a lone speaker isn't split into "Speaker 1" + "2".
+ */
+const SPEAKER_DIARIZE_WARMUP_MS = 25_000;
 /** Off-language drop: only drop if the language-detection confidence exceeds this. */
 const LANGUAGE_MISMATCH_DROP_THRESHOLD = 0.7;
 
@@ -169,6 +176,12 @@ export function useDeepgram({
   const lockedSpeakerRef = useRef<number | null>(null);
   const speakerDurationsRef = useRef<Map<number, number>>(new Map());
   const sessionStartRef = useRef<number | null>(null);
+  // Re-base Deepgram's raw speaker indices to first-seen display order so the
+  // first real speaker is always 0 ("Speaker 1"), regardless of how the
+  // diarizer numbers them after warmup re-clustering. Display-only — the lock
+  // still operates on raw indices.
+  const speakerRemapRef = useRef<Map<number, number>>(new Map());
+  const nextSpeakerRef = useRef(0);
 
   const resetTranscript = useCallback(() => {
     setSegments([]);
@@ -185,6 +198,8 @@ export function useDeepgram({
       lockedSpeakerRef.current = null;
       speakerDurationsRef.current = new Map();
       sessionStartRef.current = null;
+      speakerRemapRef.current = new Map();
+      nextSpeakerRef.current = 0;
       return;
     }
 
@@ -415,11 +430,11 @@ export function useDeepgram({
             setInterimText("");
             return;
           }
-          // Pick the dominant speaker for this segment by total word duration.
-          // Falls back to the first word's speaker, then undefined if no
-          // speaker info (diarization disabled or single-speaker session).
+          // Pick the dominant RAW speaker for this segment by total word
+          // duration. Falls back to the first word's speaker, then undefined if
+          // no speaker info (diarization disabled or single-speaker session).
           const words = alt?.words ?? [];
-          let speaker: number | undefined;
+          let rawSpeaker: number | undefined;
           if (words.length > 0) {
             const totals = new Map<number, number>();
             for (const w of words) {
@@ -432,67 +447,98 @@ export function useDeepgram({
               for (const [s, d] of totals) {
                 if (d > maxDur) {
                   maxDur = d;
-                  speaker = s;
+                  rawSpeaker = s;
                 }
               }
             } else if (typeof words[0].speaker === "number") {
-              speaker = words[0].speaker;
+              rawSpeaker = words[0].speaker;
             }
           }
 
-          // Speaker lock — accumulate per-speaker speech duration across the
-          // session; once we have enough signal, lock onto the speaker with
-          // the most total speech, and drop subsequent segments where that
-          // speaker isn't dominant. This implements "ignore side conversations
-          // and sounds" — the loudest/main speaker stays, others are filtered.
-          if (words.length > 0) {
-            for (const w of words) {
-              if (typeof w.speaker !== "number") continue;
-              const dur = (w.end ?? 0) - (w.start ?? 0);
-              if (dur <= 0) continue;
-              speakerDurationsRef.current.set(
-                w.speaker,
-                (speakerDurationsRef.current.get(w.speaker) ?? 0) + dur
-              );
-            }
-          }
-          if (lockedSpeakerRef.current === null) {
-            // Lock-fire conditions: session has been active long enough AND
-            // any speaker has accumulated enough speech. The warmup keeps the
-            // lock from snapping onto a brief opening cough or unrelated voice.
-            const sessionAgeMs = sessionStartRef.current
-              ? Date.now() - sessionStartRef.current
-              : 0;
-            if (sessionAgeMs >= SPEAKER_LOCK_WARMUP_MS) {
-              let bestSpeaker: number | null = null;
-              let bestDur = -1;
-              for (const [s, d] of speakerDurationsRef.current) {
-                if (d > bestDur) {
-                  bestDur = d;
-                  bestSpeaker = s;
-                }
-              }
-              if (bestSpeaker !== null && bestDur >= SPEAKER_LOCK_MIN_DURATION_S) {
-                lockedSpeakerRef.current = bestSpeaker;
-                console.log(
-                  `[deepgram] locked to speaker ${bestSpeaker} after ${(
-                    sessionAgeMs / 1000
-                  ).toFixed(1)}s (${bestDur.toFixed(1)}s of speech)`
+          // Deepgram's live diarizer is unreliable for the first ~25s: it parks
+          // all speech on speaker 0, then re-clusters and may renumber the same
+          // person to a higher index. Within that window we ignore diarization
+          // entirely — no lock accounting, no per-segment speaker id — so a lone
+          // khateeb isn't split into "Speaker 1" + "Speaker 2".
+          const sessionAgeMs = sessionStartRef.current
+            ? Date.now() - sessionStartRef.current
+            : 0;
+          const inDiarizeWarmup = sessionAgeMs < SPEAKER_DIARIZE_WARMUP_MS;
+
+          // Speaker lock (operates on RAW indices) — accumulate per-speaker
+          // speech duration across the session; once we have enough signal,
+          // lock onto the speaker with the most total speech and drop later
+          // segments dominated by anyone else. This implements "ignore side
+          // conversations and sounds". Skipped during the diarize warmup so the
+          // lock can't snap onto a transient warmup mis-attribution.
+          if (!inDiarizeWarmup) {
+            if (words.length > 0) {
+              for (const w of words) {
+                if (typeof w.speaker !== "number") continue;
+                const dur = (w.end ?? 0) - (w.start ?? 0);
+                if (dur <= 0) continue;
+                speakerDurationsRef.current.set(
+                  w.speaker,
+                  (speakerDurationsRef.current.get(w.speaker) ?? 0) + dur
                 );
               }
             }
-          } else if (speaker !== undefined && speaker !== lockedSpeakerRef.current) {
-            // Locked, and this segment's dominant speaker isn't the locked
-            // one. Drop it — it's a side conversation.
-            console.log(
-              `[deepgram] dropped side-speaker segment (speaker=${speaker}, locked=${lockedSpeakerRef.current}): "${transcript.slice(
-                0,
-                60
-              )}"`
-            );
-            setInterimText("");
-            return;
+            if (lockedSpeakerRef.current === null) {
+              // Lock-fire: session active long enough AND some speaker has
+              // accumulated enough speech. The warmup keeps the lock from
+              // snapping onto a brief opening cough or unrelated voice.
+              if (sessionAgeMs >= SPEAKER_LOCK_WARMUP_MS) {
+                let bestSpeaker: number | null = null;
+                let bestDur = -1;
+                for (const [s, d] of speakerDurationsRef.current) {
+                  if (d > bestDur) {
+                    bestDur = d;
+                    bestSpeaker = s;
+                  }
+                }
+                if (
+                  bestSpeaker !== null &&
+                  bestDur >= SPEAKER_LOCK_MIN_DURATION_S
+                ) {
+                  lockedSpeakerRef.current = bestSpeaker;
+                  console.log(
+                    `[deepgram] locked to speaker ${bestSpeaker} after ${(
+                      sessionAgeMs / 1000
+                    ).toFixed(1)}s (${bestDur.toFixed(1)}s of speech)`
+                  );
+                }
+              }
+            } else if (
+              rawSpeaker !== undefined &&
+              rawSpeaker !== lockedSpeakerRef.current
+            ) {
+              // Locked, and this segment's dominant speaker isn't the locked
+              // one. Drop it — it's a side conversation.
+              console.log(
+                `[deepgram] dropped side-speaker segment (speaker=${rawSpeaker}, locked=${lockedSpeakerRef.current}): "${transcript.slice(
+                  0,
+                  60
+                )}"`
+              );
+              setInterimText("");
+              return;
+            }
           }
+
+          // Display speaker: re-base raw indices to first-seen order so the main
+          // speaker reads as "Speaker 1" regardless of how Deepgram numbered it.
+          // Undefined during the diarize warmup (no reliable id yet) — the badge
+          // is hidden for those segments, which is correct for a lone speaker.
+          let speaker: number | undefined;
+          if (!inDiarizeWarmup && rawSpeaker !== undefined) {
+            let display = speakerRemapRef.current.get(rawSpeaker);
+            if (display === undefined) {
+              display = nextSpeakerRef.current++;
+              speakerRemapRef.current.set(rawSpeaker, display);
+            }
+            speaker = display;
+          }
+
           setSegments((prev) => [
             ...prev,
             {
