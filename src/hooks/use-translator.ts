@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthToken } from "@convex-dev/auth/react";
 import type { LiveSegment } from "@/types";
 
+// Matches the sentinel in src/app/api/translate/route.ts — separates the
+// streamed plain-translation deltas from the final metadata JSON trailer.
+const META_SENTINEL = "\n␞__TARJUMAN_META__␞\n";
+
 export interface UseTranslatorOptions {
   segments: LiveSegment[];
   sourceLanguage: string;
@@ -35,6 +39,12 @@ export interface UseTranslatorReturn {
    * These segments don't render at all and are skipped on persistence.
    */
   filteredIds: Set<string>;
+  /**
+   * Segment ids whose FINAL (enriched) translation has landed. Distinct from
+   * `translations[id]` being defined, which is now true mid-stream on the first
+   * partial delta. Persistence keys on this so partials are never saved.
+   */
+  completedIds: Set<string>;
   reset: () => void;
   /** Clear a segment's error so the effect re-attempts its translation. */
   retry: (id: string) => void;
@@ -60,6 +70,7 @@ export function useTranslator({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [merges, setMerges] = useState<Record<string, MergeRecord>>({});
   const [filteredIds, setFilteredIds] = useState<Set<string>>(new Set());
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
   const inFlightRef = useRef<Set<string>>(new Set());
   const [, forcePendingRender] = useState(0);
   // Convex Auth token — attached as Bearer to /api/translate so the route
@@ -72,6 +83,7 @@ export function useTranslator({
     setErrors({});
     setMerges({});
     setFilteredIds(new Set());
+    setCompletedIds(new Set());
     inFlightRef.current = new Set();
     forcePendingRender((n) => n + 1);
   };
@@ -103,6 +115,17 @@ export function useTranslator({
         }
         return changed ? next : prev;
       });
+      setCompletedIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const seg of segments) {
+          if (seg.isFinal && !next.has(seg.id)) {
+            next.add(seg.id);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
       return;
     }
 
@@ -115,8 +138,6 @@ export function useTranslator({
         !filteredIds.has(s.id)
     );
     if (toTranslate.length === 0) return;
-
-    let cancelled = false;
 
     for (const seg of toTranslate) {
       inFlightRef.current.add(seg.id);
@@ -138,15 +159,67 @@ export function useTranslator({
       }));
 
       void (async () => {
+        // Drop a segment's partial/streamed text on failure so the existing
+        // retry(id) affordance (which clears errors[id]) lets the effect re-run
+        // — its `translations[id] === undefined` guard re-includes the segment.
+        const clearPartial = () =>
+          setTranslations((prev) => {
+            if (prev[seg.id] === undefined) return prev;
+            const next = { ...prev };
+            delete next[seg.id];
+            return next;
+          });
+        const markCompleted = () =>
+          setCompletedIds((prev) => {
+            if (prev.has(seg.id)) return prev;
+            const next = new Set(prev);
+            next.add(seg.id);
+            return next;
+          });
+        // Finalize from the metadata trailer (streamed) or the small JSON body
+        // (source===target passthrough) — identical handling for both shapes.
+        const applyResult = (data: {
+          translatedText?: string;
+          merge?: MergeRecord;
+          filtered?: boolean;
+          error?: string;
+        }) => {
+          if (data.error) {
+            clearPartial();
+            setErrors((prev) => ({ ...prev, [seg.id]: data.error! }));
+            return;
+          }
+          if (data.filtered) {
+            setFilteredIds((prev) => {
+              if (prev.has(seg.id)) return prev;
+              const next = new Set(prev);
+              next.add(seg.id);
+              return next;
+            });
+            markCompleted();
+            return;
+          }
+          if (!data.translatedText) {
+            clearPartial();
+            setErrors((prev) => ({
+              ...prev,
+              [seg.id]: "Translator returned no text",
+            }));
+            return;
+          }
+          setTranslations((prev) => ({ ...prev, [seg.id]: data.translatedText! }));
+          if (data.merge && data.merge.fromIds.length > 0) {
+            setMerges((prev) => ({ ...prev, [seg.id]: data.merge! }));
+          }
+          markCompleted();
+        };
+
         try {
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
           if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
 
-          // Up to 3 attempts. Retry transient failures (network throw / 5xx /
-          // 429) with a short backoff so a blip doesn't permanently blank the
-          // segment; a 4xx (e.g. 401 auth) fails fast — retrying won't help.
           const TRANSLATE_ATTEMPTS = 3;
           const body = JSON.stringify({
             text: seg.text,
@@ -154,85 +227,114 @@ export function useTranslator({
             target: targetLanguage,
             context: requestContext.length > 0 ? requestContext : undefined,
           });
-          let res: Response | null = null;
-          let data: {
-            translatedText?: string;
-            merge?: MergeRecord;
-            filtered?: boolean;
-            error?: string;
-          } = {};
-          for (let attempt = 1; attempt <= TRANSLATE_ATTEMPTS; attempt++) {
-            try {
-              const r = await fetch("/api/translate", {
-                method: "POST",
-                headers,
-                body,
-              });
-              if (cancelled) return;
-              const d = (await r.json().catch(() => ({}))) as typeof data;
-              // Keep the result on success, on a non-retryable 4xx, or after
-              // the final attempt. Otherwise fall through to back off + retry.
-              if (
-                r.ok ||
-                !(r.status >= 500 || r.status === 429) ||
-                attempt === TRANSLATE_ATTEMPTS
-              ) {
-                res = r;
-                data = d;
-                break;
-              }
-            } catch (netErr) {
-              // Network-level failure: retry unless this was the last attempt,
-              // in which case let the outer catch record the error.
-              if (attempt === TRANSLATE_ATTEMPTS) throw netErr;
-            }
-            await new Promise((rs) => setTimeout(rs, 400 * attempt));
-          }
-          if (cancelled || !res) return;
 
-          if (!res.ok) {
-            const msg = data.error ?? `Translation failed (${res.status})`;
-            setErrors((prev) => ({ ...prev, [seg.id]: msg }));
-          } else if (data.filtered) {
-            // Server filtered as noise (too short / off-language) — suppress
-            // the whole segment from the transcript without rendering an error.
-            setFilteredIds((prev) => {
-              if (prev.has(seg.id)) return prev;
-              const next = new Set(prev);
-              next.add(seg.id);
-              return next;
-            });
-          } else if (!data.translatedText) {
-            const msg = data.error ?? "Translator returned no text";
-            setErrors((prev) => ({ ...prev, [seg.id]: msg }));
-          } else {
-            setTranslations((prev) => ({
-              ...prev,
-              [seg.id]: data.translatedText!,
-            }));
-            if (data.merge && data.merge.fromIds.length > 0) {
-              setMerges((prev) => ({
-                ...prev,
-                [seg.id]: data.merge!,
-              }));
+          // The retry loop wraps only the HANDSHAKE — a transient 5xx/429/
+          // network failure before the stream opens retries with backoff. Once
+          // a 200 stream is open, a failure is terminal-for-segment (tap to
+          // retry). A 4xx (e.g. 401 auth) fails fast.
+          for (let attempt = 1; attempt <= TRANSLATE_ATTEMPTS; attempt++) {
+            let r: Response;
+            try {
+              r = await fetch("/api/translate", { method: "POST", headers, body });
+            } catch (netErr) {
+              if (attempt === TRANSLATE_ATTEMPTS) throw netErr;
+              await new Promise((rs) => setTimeout(rs, 400 * attempt));
+              continue;
             }
+
+            if (!r.ok) {
+              if (
+                (r.status >= 500 || r.status === 429) &&
+                attempt < TRANSLATE_ATTEMPTS
+              ) {
+                await new Promise((rs) => setTimeout(rs, 400 * attempt));
+                continue;
+              }
+              const d = (await r.json().catch(() => ({}))) as { error?: string };
+              setErrors((prev) => ({
+                ...prev,
+                [seg.id]: d.error ?? `Translation failed (${r.status})`,
+              }));
+              break;
+            }
+
+            // Non-streamed JSON success = the source===target passthrough.
+            const ctype = r.headers.get("Content-Type") ?? "";
+            if (!ctype.startsWith("text/plain") || !r.body) {
+              const d = (await r.json().catch(() => ({}))) as Parameters<
+                typeof applyResult
+              >[0];
+              applyResult(d);
+              break;
+            }
+
+            // Streamed success: show plain-text deltas progressively, then the
+            // META_SENTINEL trailer carries the final enriched text + merge.
+            const reader = r.body.getReader();
+            const decoder = new TextDecoder();
+            let acc = "";
+            let sentinelAt = -1;
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                acc += decoder.decode(value, { stream: true });
+                if (sentinelAt === -1) {
+                  sentinelAt = acc.indexOf(META_SENTINEL);
+                  // Progressive update — first delta clears "…translating".
+                  const visible =
+                    sentinelAt === -1 ? acc : acc.slice(0, sentinelAt);
+                  setTranslations((prev) =>
+                    prev[seg.id] === visible
+                      ? prev
+                      : { ...prev, [seg.id]: visible }
+                  );
+                }
+              }
+            } catch {
+              clearPartial();
+              setErrors((prev) => ({
+                ...prev,
+                [seg.id]: "Translation stream interrupted",
+              }));
+              break;
+            }
+
+            const idx = acc.indexOf(META_SENTINEL);
+            if (idx === -1) {
+              clearPartial();
+              setErrors((prev) => ({
+                ...prev,
+                [seg.id]: "Translation incomplete",
+              }));
+              break;
+            }
+            let meta: Parameters<typeof applyResult>[0] = {};
+            try {
+              meta = JSON.parse(acc.slice(idx + META_SENTINEL.length));
+            } catch {
+              clearPartial();
+              setErrors((prev) => ({
+                ...prev,
+                [seg.id]: "Malformed translation trailer",
+              }));
+              break;
+            }
+            applyResult(meta);
+            break;
           }
         } catch (e) {
-          if (cancelled) return;
+          clearPartial();
           setErrors((prev) => ({
             ...prev,
             [seg.id]: e instanceof Error ? e.message : String(e),
           }));
         } finally {
           inFlightRef.current.delete(seg.id);
-          if (!cancelled) forcePendingRender((n) => n + 1);
+          forcePendingRender((n) => n + 1);
         }
       })();
     }
-
-    return () => {
-      cancelled = true;
-    };
   }, [
     segments,
     sourceLanguage,
@@ -260,6 +362,7 @@ export function useTranslator({
     merges,
     suppressedIds,
     filteredIds,
+    completedIds,
     reset,
     retry,
   };

@@ -33,19 +33,6 @@ interface MergeDirective {
   combinedTranslatedText: string;
 }
 
-interface AnthropicResponse {
-  content?: { type: string; text: string }[];
-  error?: { message?: string; type?: string };
-  // Surfaced when prompt caching kicks in. Useful for cost telemetry once the
-  // system prompt grows past Haiku's 2048-token cache-eligibility threshold.
-  usage?: {
-    input_tokens: number;
-    output_tokens: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
-  };
-}
-
 const LANGUAGE_NAMES: Record<string, string> = {
   // Tier 1
   en: "English",
@@ -250,6 +237,12 @@ ${text}`;
 // as the translation and skip the merge silently.
 const MERGE_MARKER = "<<<MERGE>>>";
 
+// Separates the streamed plain-translation text from the final metadata JSON
+// trailer (enriched text + merge/filtered/error). The U+241E control char can
+// never appear in translated prose, so the client splits on it safely. MUST
+// byte-match the constant in src/hooks/use-translator.ts.
+const META_SENTINEL = "\n␞__TARJUMAN_META__␞\n";
+
 function parseMergeDirective(
   raw: string,
   validContextIds: Set<string>
@@ -436,6 +429,7 @@ export async function POST(req: NextRequest) {
   const requestBody = JSON.stringify({
     model,
     max_tokens: maxTokens,
+    stream: true,
     system: [
       {
         type: "text",
@@ -516,62 +510,142 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const data = (await response.json().catch(() => ({}))) as AnthropicResponse;
-
-  if (!response.ok || data.error) {
-    const detail = data.error?.message ?? `HTTP ${response.status}`;
+  // We requested stream:true, so `response.ok` means the SSE stream is open.
+  // Non-ok statuses stay JSON-with-real-HTTP-status (429/5xx already handled in
+  // the retry loop above; guard the rest here) so the client's status-based
+  // retry keeps working. Only the HTTP-200 success path streams.
+  if (!response.ok || !response.body) {
+    const errText = await response.text().catch(() => "");
     return NextResponse.json(
-      { error: `Translation failed: ${detail}` },
+      {
+        error: `Translation failed: HTTP ${response.status} ${errText.slice(0, 200)}`,
+      },
       { status: 502 }
     );
   }
 
-  const rawText = data.content?.find((b) => b.type === "text")?.text;
-  if (typeof rawText !== "string") {
-    return NextResponse.json(
-      { error: "Translator returned no text" },
-      { status: 502 }
-    );
-  }
-
-  // Split the model's output into translation + optional merge directive.
   // Sanity-check merge ids against what the client actually sent so a
   // hallucinated id can't break the client's segment state.
   const validContextIds = new Set<string>(
     (context ?? []).map((c) => c.id).filter((id): id is string => !!id)
   );
-  const parsed = parseMergeDirective(rawText, validContextIds);
 
-  // Empty output is the model's "this is untranslatable noise / off-language
-  // transliteration" verdict (per the system prompt). Surface it as a
-  // filtered segment — the client suppresses it from the transcript — rather
-  // than falling through to the "no text" error path. Real speech never
-  // legitimately translates to an empty string.
-  if (!parsed.translation.trim()) {
-    return NextResponse.json({
-      translatedText: "",
-      filtered: true,
-      filterReason: "model-judged-noise",
-    });
-  }
+  const upstream = response;
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = upstream.body!.getReader();
+      const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
+      let buffer = ""; // SSE line buffer
+      let rawText = ""; // full accumulated model output (incl. any MERGE block)
+      let emitted = 0; // chars of pre-MERGE text already streamed to the client
+      let mergeSeen = false;
 
-  // Citation enrichment pass: verify hadith citations against sunnah.com
-  // and Quran citations against quran.com, replace text with canonical
-  // bodies + clickable markdown links. Quran is always available (public
-  // API); sunnah.com requires SUNNAH_API_KEY and silently no-ops without it.
-  const hadithEnriched = await verifyAndEnrich(parsed.translation);
-  const quranEnriched = await verifyAndEnrichQuran(hadithEnriched.text, target);
+      const emitMeta = (meta: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(META_SENTINEL + JSON.stringify(meta)));
+      };
 
-  const enrichedMerge = parsed.merge
-    ? await (async () => {
-        const h = await verifyAndEnrich(parsed.merge!.combinedTranslatedText);
-        const q = await verifyAndEnrichQuran(h.text, target);
-        return { ...parsed.merge!, combinedTranslatedText: q.text };
-      })()
-    : undefined;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const json = line.slice(6).trim();
+            if (!json || json === "[DONE]") continue;
+            let evt: {
+              type?: string;
+              delta?: { type?: string; text?: string };
+              error?: { message?: string };
+            };
+            try {
+              evt = JSON.parse(json);
+            } catch {
+              continue; // ignore malformed SSE line
+            }
+            // Anthropic emits an `error` event mid-stream on upstream trouble.
+            if (evt.type === "error") {
+              throw new Error(evt.error?.message ?? "stream-error");
+            }
+            if (
+              evt.type === "content_block_delta" &&
+              evt.delta?.type === "text_delta" &&
+              typeof evt.delta.text === "string"
+            ) {
+              rawText += evt.delta.text;
+              if (mergeSeen) continue;
+              const markerIdx = rawText.indexOf(MERGE_MARKER);
+              if (markerIdx === -1) {
+                // Hold back the last MERGE_MARKER.length chars so a marker
+                // split across two deltas is never partially shown.
+                const safeEnd = Math.max(0, rawText.length - MERGE_MARKER.length);
+                if (safeEnd > emitted) {
+                  controller.enqueue(encoder.encode(rawText.slice(emitted, safeEnd)));
+                  emitted = safeEnd;
+                }
+              } else {
+                mergeSeen = true;
+                if (markerIdx > emitted) {
+                  controller.enqueue(encoder.encode(rawText.slice(emitted, markerIdx)));
+                  emitted = markerIdx;
+                }
+              }
+            }
+          }
+        }
 
-  return NextResponse.json({
-    translatedText: quranEnriched.text,
-    ...(enrichedMerge ? { merge: enrichedMerge } : {}),
+        // Flush any held-back tail of the pre-MERGE text.
+        if (!mergeSeen && rawText.length > emitted) {
+          controller.enqueue(encoder.encode(rawText.slice(emitted)));
+        }
+
+        // Post-process the COMPLETE output exactly as the old non-streaming
+        // path did, then deliver it in the metadata trailer.
+        const parsed = parseMergeDirective(rawText, validContextIds);
+        if (!parsed.translation.trim()) {
+          // Empty = the model's "untranslatable noise / off-language" verdict.
+          emitMeta({ translatedText: "", filtered: true, filterReason: "model-judged-noise" });
+          controller.close();
+          return;
+        }
+        // Citation enrichment: verify hadith (sunnah.com) + Quran (quran.com),
+        // swap in canonical bodies + clickable links. Off the perceived path —
+        // the plain translation already streamed; this lands in the trailer.
+        const hadithEnriched = await verifyAndEnrich(parsed.translation);
+        const quranEnriched = await verifyAndEnrichQuran(hadithEnriched.text, target);
+        const enrichedMerge = parsed.merge
+          ? await (async () => {
+              const h = await verifyAndEnrich(parsed.merge!.combinedTranslatedText);
+              const q = await verifyAndEnrichQuran(h.text, target);
+              return { ...parsed.merge!, combinedTranslatedText: q.text };
+            })()
+          : undefined;
+        emitMeta({
+          translatedText: quranEnriched.text,
+          ...(enrichedMerge ? { merge: enrichedMerge } : {}),
+        });
+        controller.close();
+      } catch {
+        // Upstream read failed mid-stream. The HTTP 200 + partial body is
+        // already committed, so we can't change status — signal failure in the
+        // trailer and let the client treat it as a retryable error.
+        try {
+          emitMeta({ error: "stream-interrupted" });
+          controller.close();
+        } catch {
+          /* controller already closed/errored */
+        }
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+    },
   });
 }

@@ -331,7 +331,10 @@ export default function RecordPage() {
         return false;
       }
       if (sourceTargetSame) return true;
-      if (translator.translations[seg.id] !== undefined) return true;
+      // Persist only once the FINAL enriched translation has landed — NOT on a
+      // partial streamed delta (which now sets translations[id] mid-stream).
+      // completedIds marks "done" (translated, filtered, or finalized).
+      if (translator.completedIds.has(seg.id)) return true;
       // On a forced flush (Stop), persist untranslated finals too — better a
       // segment with its Arabic source and a blank translation than the whole
       // segment (often the closing du'a/summary) silently lost because its
