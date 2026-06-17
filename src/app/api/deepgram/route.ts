@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { isValidLangCode } from "@/lib/utils";
 import { requireAuthFromHeader, checkRateLimit } from "@/lib/api-auth";
-import { RTL_LANGS } from "@/lib/script";
 
 /**
  * Issues credentials for a browser → Deepgram realtime transcription session.
@@ -140,15 +139,23 @@ export async function GET(req: Request) {
   // the source language drifts mid-utterance.
   const model = reqUrl.searchParams.get("model") ?? "nova-3";
 
-  // Off-language gating: for a forced RTL source (Arabic etc.) connect in
-  // Deepgram multilingual mode (nova-3 added Arabic to `multi` in Jan 2026). In
-  // multi, non-source speech transcribes in its OWN script (Latin for English)
-  // rather than Arabic-transliterated gibberish, so the script-ratio gate (the
-  // client drop in use-deepgram + the server filter in /api/translate) can drop
-  // it. The app's source language stays `language` for translation; only this
-  // STT connection switches to multi. "multi" is set HERE, after the lang-code
-  // validation above (which would otherwise reject it).
-  const dgLanguage = RTL_LANGS.has(language.toLowerCase()) ? "multi" : language;
+  // Transcribe with the DEDICATED monolingual model for the requested language.
+  //
+  // CRITICAL: Deepgram's `language=multi` (nova-3 multilingual) covers ONLY
+  // en/es/fr/de/hi/it/ja/nl/ru/pt — it does NOT include Arabic. Arabic ships as
+  // a dedicated streaming model (language=ar + dialect variants ar-SA, ar-EG, …).
+  // A prior change routed RTL sources through `multi` on the mistaken belief it
+  // had gained Arabic in Jan 2026; in reality `multi` returns EMPTY transcripts
+  // for Arabic speech (it simply can't transcribe it), which read on-screen as a
+  // permanent "Listening…" with nothing landing. Verified against Deepgram docs
+  // 2026-06: Arabic realtime requires language=ar.
+  //
+  // Tradeoff: under a forced source language Deepgram transliterates off-language
+  // speech into the source script, so the script-ratio gate can't catch English
+  // bleed (req #1 off-language gating falls back to the confidence floor + the
+  // server-side LLM noise filter). A robust fix is a dedicated language detector,
+  // NOT failing-closed — but a working Arabic transcript comes first.
+  const dgLanguage = language;
 
   // The browser sends raw Linear16 PCM (16kHz mono, Int16 little-endian)
   // straight from an AudioWorklet. With WebM/Opus we had to omit
