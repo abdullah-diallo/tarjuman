@@ -9,7 +9,10 @@ import { Icon } from "@/components/shared/icon";
 import { LanguageSelector } from "@/components/recording/language-selector";
 import { IdleRecordButton } from "@/components/recording/record-button";
 import { RecentSessionsPreview } from "@/components/recording/recent-sessions-preview";
-import { RecordingShell } from "@/components/recording/recording-shell";
+import {
+  RecordingShell,
+  type TranscriptLayout,
+} from "@/components/recording/recording-shell";
 import { MicErrorState } from "@/components/recording/mic-error-state";
 import { PositioningTips } from "@/components/recording/positioning-tips";
 import { AccountMenu } from "@/components/auth/account-menu";
@@ -118,6 +121,27 @@ export default function RecordPage() {
       void updatePrefs({ mainSpeakerOnly: next });
       return next;
     });
+  };
+
+  // Transcript layout: stacked cards ("paired") vs split language panes
+  // ("split"). An additive "extra look" — local-only pref via localStorage.
+  const [transcriptLayout, setTranscriptLayout] =
+    useState<TranscriptLayout>("paired");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("tarjuman:transcript-layout");
+      if (v === "split" || v === "paired") setTranscriptLayout(v);
+    } catch {
+      /* localStorage unavailable */
+    }
+  }, []);
+  const setLayout = (l: TranscriptLayout) => {
+    setTranscriptLayout(l);
+    try {
+      localStorage.setItem("tarjuman:transcript-layout", l);
+    } catch {
+      /* localStorage unavailable */
+    }
   };
 
   const recorder = useRecorder();
@@ -621,6 +645,8 @@ export default function RecordPage() {
         errors={translator.errors}
         pending={translator.pending}
         onRetry={translator.retry}
+        transcriptLayout={transcriptLayout}
+        onSetLayout={setLayout}
         mainSpeakerOnly={mainSpeakerOnly}
         onMainSpeakerToggle={toggleMainSpeaker}
         onPause={handlePause}

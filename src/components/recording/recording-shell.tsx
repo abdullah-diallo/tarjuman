@@ -6,8 +6,12 @@ import { formatDuration, getLangName } from "@/lib/utils";
 import { Icon } from "@/components/shared/icon";
 import { AudioVisualizer } from "./audio-visualizer";
 import { LiveTranscript } from "./live-transcript";
+import { SplitTranscript } from "./split-transcript";
 import { useSessionTimer } from "@/hooks/use-session-timer";
 import type { ConnectionState, LiveSegment } from "@/types";
+
+/** Transcript view mode: stacked source+translation cards, or two split panes. */
+export type TranscriptLayout = "paired" | "split";
 
 interface RecordingShellProps {
   sourceLang: string;
@@ -38,6 +42,9 @@ interface RecordingShellProps {
   pending?: Set<string>;
   /** Clear a segment's error and re-attempt its translation. */
   onRetry?: (id: string) => void;
+  /** Transcript view mode + setter (persisted by the parent). */
+  transcriptLayout: TranscriptLayout;
+  onSetLayout: (layout: TranscriptLayout) => void;
   /** Whether to keep only the dominant speaker. Controlled by the parent. */
   mainSpeakerOnly: boolean;
   onMainSpeakerToggle: () => void;
@@ -64,6 +71,8 @@ export function RecordingShell({
   errors,
   pending,
   onRetry,
+  transcriptLayout,
+  onSetLayout,
   mainSpeakerOnly,
   onMainSpeakerToggle,
   onPause,
@@ -113,6 +122,22 @@ export function RecordingShell({
   const statusColor = paused ? COLORS.amber : COLORS.red;
   const statusLabel = paused ? "Paused" : "Recording";
 
+  // Identical props for both transcript views, so the toggle is a true drop-in.
+  const transcriptProps = {
+    segments,
+    interimText: paused ? "" : interimText,
+    sourceLang,
+    translations,
+    targetLang,
+    merges,
+    suppressedIds,
+    filteredIds,
+    errors,
+    pending,
+    onRetry,
+    mainSpeakerOnly,
+  };
+
   return (
     <div className="flex flex-col flex-1" style={{ paddingBottom: 60 }}>
       {/* Header: status dot + label + timer */}
@@ -145,7 +170,7 @@ export function RecordingShell({
 
       {/* Language bar + connection status */}
       <div
-        className="px-5 py-2 flex items-center justify-center gap-2"
+        className="px-5 py-2 flex items-center justify-center gap-2 relative"
         style={{ borderBottom: `1px solid ${COLORS.border}` }}
       >
         <span className="text-xs font-semibold" style={{ color: COLORS.t3 }}>
@@ -192,6 +217,57 @@ export function RecordingShell({
             Transcription offline
           </span>
         )}
+
+        {/* Layout toggle — stacked cards ⇄ split (each language its own half). */}
+        <div
+          className="absolute right-3 top-1/2 -translate-y-1/2 flex rounded-lg overflow-hidden"
+          style={{ border: `1px solid ${COLORS.borderLight}` }}
+        >
+          {(["paired", "split"] as const).map((mode) => {
+            const on = transcriptLayout === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => onSetLayout(mode)}
+                aria-pressed={on}
+                aria-label={
+                  mode === "paired"
+                    ? "Stacked transcript view"
+                    : "Split transcript view"
+                }
+                title={
+                  mode === "paired"
+                    ? "Stacked cards"
+                    : "Split view — each language in its own half"
+                }
+                className="w-7 h-6 grid place-items-center cursor-pointer transition-colors"
+                style={{ background: on ? COLORS.accentSoft : "transparent" }}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke={on ? COLORS.accent : COLORS.t3}
+                  strokeWidth="1.6"
+                >
+                  {mode === "paired" ? (
+                    <>
+                      <rect x="2.5" y="3" width="11" height="3.5" rx="1" />
+                      <rect x="2.5" y="9.5" width="11" height="3.5" rx="1" />
+                    </>
+                  ) : (
+                    <>
+                      <rect x="2.5" y="3" width="4.5" height="10" rx="1" />
+                      <rect x="9" y="3" width="4.5" height="10" rx="1" />
+                    </>
+                  )}
+                </svg>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Inline error banner with the actual root cause so users can act on it. */}
@@ -254,20 +330,11 @@ export function RecordingShell({
       )}
 
       {/* Transcript (the hero) */}
-      <LiveTranscript
-        segments={segments}
-        interimText={paused ? "" : interimText}
-        sourceLang={sourceLang}
-        translations={translations}
-        targetLang={targetLang}
-        merges={merges}
-        suppressedIds={suppressedIds}
-        filteredIds={filteredIds}
-        errors={errors}
-        pending={pending}
-        onRetry={onRetry}
-        mainSpeakerOnly={mainSpeakerOnly}
-      />
+      {transcriptLayout === "split" ? (
+        <SplitTranscript {...transcriptProps} />
+      ) : (
+        <LiveTranscript {...transcriptProps} />
+      )}
 
       {/* Controls */}
       <div

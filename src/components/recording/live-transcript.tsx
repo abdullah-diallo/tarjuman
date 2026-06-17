@@ -8,7 +8,7 @@ import { Icon } from "@/components/shared/icon";
 import { renderTextWithLinks } from "@/lib/citation-renderer";
 import type { LiveSegment } from "@/types";
 
-interface LiveTranscriptProps {
+export interface LiveTranscriptProps {
   segments: LiveSegment[];
   interimText: string;
   sourceLang: string;
@@ -44,12 +44,12 @@ const SPEAKER_COLORS = [
   "#EC4899",
 ];
 
-function speakerColor(s: number | undefined): string {
+export function speakerColor(s: number | undefined): string {
   if (s === undefined) return SPEAKER_COLORS[0];
   return SPEAKER_COLORS[s % SPEAKER_COLORS.length];
 }
 
-function dominantSpeaker(segments: LiveSegment[]): number | undefined {
+export function dominantSpeaker(segments: LiveSegment[]): number | undefined {
   const totals = new Map<number, number>();
   for (const s of segments) {
     if (typeof s.speaker !== "number") continue;
@@ -78,7 +78,7 @@ function dominantSpeaker(segments: LiveSegment[]): number | undefined {
  * the system Arabic fonts (SF Arabic on iOS, Geeza Pro on macOS) get a
  * touch tight at this size.
  */
-function fontSizeForLang(lang: string): number {
+export function fontSizeForLang(lang: string): number {
   if (isRtl(lang)) return 22; // Arabic / Urdu
   if (lang === "zh" || lang === "ja" || lang === "ko") return 20;
   return 19;
