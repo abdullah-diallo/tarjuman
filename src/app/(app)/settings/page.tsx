@@ -30,7 +30,6 @@ export default function SettingsPage() {
   // Optimistic local overrides so toggles/pickers feel instant; they fall
   // back to the stored pref, then the app default.
   const [localLangs, setLocalLangs] = useState<{ s: string; t: string } | null>(null);
-  const [localTts, setLocalTts] = useState<boolean | null>(null);
   const [localMain, setLocalMain] = useState<boolean | null>(null);
   const [tipsReset, setTipsReset] = useState(false);
 
@@ -55,7 +54,6 @@ export default function SettingsPage() {
 
   const sourceLang = localLangs?.s ?? prefs?.defaultSourceLanguage ?? "ar";
   const targetLang = localLangs?.t ?? prefs?.defaultTargetLanguage ?? "en";
-  const ttsEnabled = localTts ?? prefs?.ttsEnabled ?? true;
   const mainSpeakerOnly = localMain ?? prefs?.mainSpeakerOnly ?? false;
 
   const handleLangChange = (next: { sourceLang: string; targetLang: string }) => {
@@ -64,12 +62,6 @@ export default function SettingsPage() {
       defaultSourceLanguage: next.sourceLang,
       defaultTargetLanguage: next.targetLang,
     });
-  };
-
-  const toggleTts = () => {
-    const next = !ttsEnabled;
-    setLocalTts(next);
-    void updatePrefs({ ttsEnabled: next });
   };
 
   const toggleMain = () => {
@@ -192,13 +184,6 @@ export default function SettingsPage() {
       <div className="px-5 pt-6">
         <div className={sectionLabel}>Audio &amp; voice</div>
         <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-          <Toggle
-            label="Speak translations aloud"
-            description="Play each translation with text-to-speech as it arrives."
-            checked={ttsEnabled}
-            onChange={toggleTts}
-          />
-          <div style={{ borderTop: `1px solid ${COLORS.border}` }} />
           <Toggle
             label="Focus on main speaker"
             description="Drop other voices when several speakers are detected."

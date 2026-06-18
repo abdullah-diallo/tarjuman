@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
@@ -26,7 +26,6 @@ import { useRecorder } from "@/hooks/use-recorder";
 import { useDeepgram } from "@/hooks/use-deepgram";
 import { useTranslator } from "@/hooks/use-translator";
 import { useSessionTimer } from "@/hooks/use-session-timer";
-import { useTts } from "@/hooks/use-tts";
 
 // localStorage key holding an in-progress recording's transcript, so an
 // abnormal exit (tab close, mobile tab-discard, pause-then-kill) doesn't lose
@@ -76,26 +75,6 @@ export default function RecordPage() {
     if (prefs?.defaultSourceLanguage) setSourceLang(prefs.defaultSourceLanguage);
     if (prefs?.defaultTargetLanguage) setTargetLang(prefs.defaultTargetLanguage);
   }, [prefs]);
-
-  // Default TTS to ON — the user explicitly asked for live audio. They can
-  // mute it from Settings; the choice persists per-user in Convex.
-  const [ttsEnabled, setTtsEnabled] = useState(true);
-  const hydratedTts = useRef(false);
-  useEffect(() => {
-    if (hydratedTts.current || prefs === undefined) return;
-    hydratedTts.current = true;
-    if (typeof prefs?.ttsEnabled === "boolean") {
-      setTtsEnabled(prefs.ttsEnabled);
-    } else if (typeof window !== "undefined") {
-      // One-time migration of the legacy localStorage pref into Convex.
-      const legacy = localStorage.getItem("livetranscribe:tts-enabled");
-      if (legacy !== null) {
-        const val = legacy === "1";
-        setTtsEnabled(val);
-        void updatePrefs({ ttsEnabled: val });
-      }
-    }
-  }, [prefs, updatePrefs]);
 
   // Main-speaker filter — same Convex-backed pattern as TTS, lifted here from
   // the recording shell so its state survives across recordings and devices.
@@ -201,25 +180,6 @@ export default function RecordPage() {
     segments: deepgram.segments,
     sourceLanguage: sourceLang,
     targetLanguage: targetLang,
-  });
-
-  // Live audio of translations.
-  const ttsItems = useMemo(
-    () =>
-      Object.entries(translator.translations).map(([id, text]) => ({
-        id,
-        text,
-      })),
-    [translator.translations]
-  );
-  // Read translations aloud via the browser's Web Speech API (male voice
-  // only — enforced in use-tts). Translator items arriving in `ttsItems`
-  // are spoken in arrival order.
-  useTts({
-    enabled: ttsEnabled && isActive,
-    paused: recorder.phase === "paused",
-    language: targetLang,
-    items: ttsItems,
   });
 
   const elapsed = useSessionTimer(isActive, recorder.phase === "paused");
