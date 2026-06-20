@@ -1,9 +1,6 @@
 import { COLORS } from "@/lib/constants";
 import { CONTACT_EMAIL } from "@/lib/site";
 
-// PLACEHOLDER text. Replace before public launch. The structure follows
-// common SaaS Terms of Service templates.
-
 export const metadata = {
   title: "Terms of Service",
   description: "Terms governing use of Tarjuman.",
@@ -27,7 +24,7 @@ export default function TermsPage() {
   return (
     <>
       <h1 style={styles.h1}>Terms of Service</h1>
-      <div style={styles.meta}>Last updated: 2026-05-04 — DRAFT.</div>
+      <div style={styles.meta}>Last updated: 2026-06-20</div>
 
       <p style={styles.p}>
         By using Tarjuman (the &quot;Service&quot;), you agree to these
@@ -91,7 +88,7 @@ export default function TermsPage() {
       <p style={styles.p}>
         We aim for high availability but make no uptime guarantee. The
         Service depends on third-party providers (Deepgram, Anthropic,
-        Convex) whose outages may affect our availability.
+        Convex, and Vercel) whose outages may affect our availability.
       </p>
 
       <h2 style={styles.h2}>Pricing</h2>
@@ -127,6 +124,15 @@ export default function TermsPage() {
         account&quot; button in the app. We may suspend or terminate accounts
         for violation of these Terms, abuse of the Service, or non-payment
         (when paid plans exist).
+      </p>
+
+      <h2 style={styles.h2}>Governing law</h2>
+      <p style={styles.p}>
+        These Terms are governed by the laws applicable in the jurisdiction
+        where Tarjuman&apos;s operator is established, without regard to
+        conflict-of-law principles. You agree that any dispute arising from
+        these Terms or the Service will be resolved in the courts of that
+        jurisdiction.
       </p>
 
       <h2 style={styles.h2}>Changes</h2>

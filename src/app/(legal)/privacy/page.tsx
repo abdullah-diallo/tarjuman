@@ -1,11 +1,6 @@
 import { COLORS } from "@/lib/constants";
 import { CONTACT_EMAIL } from "@/lib/site";
 
-// PLACEHOLDER text. Before public launch, replace with text from your
-// preferred privacy-policy generator (termly.io / iubenda / privacypolicies.com)
-// or have a lawyer review. The structure here matches what most generators
-// produce so swapping is straightforward.
-
 export const metadata = {
   title: "Privacy Policy",
   description: "How Tarjuman collects, uses, and stores your data.",
@@ -29,143 +24,174 @@ export default function PrivacyPage() {
   return (
     <>
       <h1 style={styles.h1}>Privacy Policy</h1>
-      <div style={styles.meta}>Last updated: 2026-05-04 — DRAFT.</div>
+      <div style={styles.meta}>Last updated: 2026-06-20</div>
 
       <p style={styles.p}>
-        This Privacy Policy describes how Tarjuman (&quot;we&quot;,
-        &quot;our&quot;) collects, uses, and protects information when you use
-        the Tarjuman service.
+        This Privacy Policy explains how Tarjuman (&quot;Tarjuman&quot;,
+        &quot;we&quot;, &quot;our&quot;) collects, uses, shares, and protects
+        information when you use the Tarjuman service (the &quot;Service&quot;) at
+        tarjuman.live. By using the Service, you agree to this policy.
       </p>
 
       <h2 style={styles.h2}>What we collect</h2>
       <ul style={styles.ul}>
         <li>
-          <strong>Account information:</strong> email address, name (if
-          provided via Google sign-in), and profile picture (if provided via
-          Google sign-in).
+          <strong>Account information:</strong> your email address, and your
+          name and profile picture if you sign in with Google.
         </li>
         <li>
-          <strong>Audio content:</strong> when you record a session, your
-          microphone audio is sent to our speech-to-text provider (Deepgram)
-          for transcription. Audio is processed in-memory and is not stored on
-          our servers.
+          <strong>Audio you record:</strong> when you start a session, your
+          microphone audio is streamed to our speech-to-text provider (Deepgram)
+          for live transcription. Audio is processed in transit and is{" "}
+          <strong>not stored</strong> by us — only the resulting text is saved.
         </li>
         <li>
-          <strong>Transcripts and translations:</strong> the source-language
-          text from your recordings, plus translations and summaries generated
-          for you. These are stored in our database (Convex) and visible only
-          to your authenticated account.
+          <strong>Transcripts, translations &amp; summaries:</strong> the
+          source-language text from your recordings, the translations, and any
+          AI summaries you generate. These are stored in our database and are
+          visible only to your authenticated account.
         </li>
         <li>
-          <strong>Usage telemetry:</strong> anonymized counts of API calls
-          (translation, summary) for cost and abuse monitoring. No transcript
-          content is included.
+          <strong>Preferences:</strong> your default languages and display
+          settings.
+        </li>
+        <li>
+          <strong>Diagnostics &amp; usage:</strong> aggregate, non-identifying
+          metrics (page views, error reports, counts of API calls) used to keep
+          the Service running and catch bugs. These do not include your
+          transcript content.
         </li>
       </ul>
 
       <h2 style={styles.h2}>Third-party processors</h2>
       <p style={styles.p}>
-        Your data is processed by these subprocessors:
+        We share data with the following subprocessors only as needed to run the
+        Service. Each handles data under its own privacy policy:
       </p>
       <ul style={styles.ul}>
         <li>
-          <strong>Deepgram</strong> — real-time speech transcription. Audio is
-          sent to Deepgram&apos;s servers for transcription and returned as
-          text. See{" "}
-          <a
-            href="https://deepgram.com/privacy"
-            style={{ color: COLORS.accent }}
-          >
-            Deepgram&apos;s privacy policy
+          <strong>Deepgram</strong> — real-time speech-to-text. Your audio is
+          sent to Deepgram for transcription and returned as text.{" "}
+          <a href="https://deepgram.com/privacy" style={{ color: COLORS.accent }}>
+            Policy
           </a>
           .
         </li>
         <li>
-          <strong>Anthropic (Claude)</strong> — translation and summary
-          generation. Transcript text is sent to Anthropic&apos;s API. See{" "}
-          <a
-            href="https://anthropic.com/privacy"
-            style={{ color: COLORS.accent }}
-          >
-            Anthropic&apos;s privacy policy
+          <strong>Anthropic (Claude)</strong> — translation and summarization.
+          Transcript text is sent to Anthropic&apos;s API. Anthropic does not
+          train its models on API data by default.{" "}
+          <a href="https://www.anthropic.com/legal/privacy" style={{ color: COLORS.accent }}>
+            Policy
           </a>
           .
         </li>
         <li>
-          <strong>Convex</strong> — database and authentication. Stores your
-          email, transcripts, summaries, and authentication credentials.
+          <strong>Convex</strong> — our database and authentication backend.
+          Stores your account, transcripts, summaries, and preferences.
         </li>
         <li>
-          <strong>Resend</strong> — transactional email (password reset codes
-          only).
+          <strong>Vercel</strong> — hosts the web app and provides cookieless,
+          aggregate usage analytics (e.g. page views). No cross-site tracking.
         </li>
         <li>
-          <strong>Google</strong> — only if you sign in with Google (OAuth).
-          We receive your name, email, and profile picture from Google.
+          <strong>Sentry</strong> — error monitoring. To diagnose crashes it may
+          process technical data such as your IP address, browser, and device
+          type. It does not receive your transcripts.
+        </li>
+        <li>
+          <strong>Resend</strong> — sends transactional email (password-reset
+          codes only).
+        </li>
+        <li>
+          <strong>Google</strong> — only if you choose to sign in with Google
+          (OAuth). We receive your name, email, and profile picture.
         </li>
       </ul>
 
       <h2 style={styles.h2}>How we use your data</h2>
       <ul style={styles.ul}>
-        <li>To provide the transcription, translation, and summary features.</li>
+        <li>To provide transcription, translation, and summary features.</li>
         <li>To let you access your transcript history across devices.</li>
-        <li>To send you transactional emails (password reset).</li>
-        <li>To monitor abuse and protect the service from automated misuse.</li>
+        <li>To send transactional email (password reset).</li>
+        <li>To monitor, secure, and improve the Service and prevent abuse.</li>
       </ul>
       <p style={styles.p}>
-        We do <strong>not</strong> sell your data. We do not share it with
-        third parties except the subprocessors listed above. We do not use
-        your transcripts for advertising or to train AI models.
+        We do <strong>not</strong> sell your personal data, share it for
+        advertising, or use your transcripts to train our own models. We share
+        data only with the subprocessors above, for the purposes described.
+      </p>
+
+      <h2 style={styles.h2}>AI-generated content</h2>
+      <p style={styles.p}>
+        Transcriptions, translations, and summaries are generated by automated
+        systems and <strong>may contain errors</strong>. For religious content
+        such as khutbahs, Qur&apos;an, or Hadith, treat the output as an aid
+        only — not an authoritative translation or ruling — and verify with
+        qualified scholars and primary sources.
       </p>
 
       <h2 style={styles.h2}>Data retention</h2>
       <p style={styles.p}>
-        Your transcripts, translations, and summaries are retained
-        indefinitely until you delete them — either individually (delete a
-        session) or collectively (delete your account). When you delete your
-        account, all your sessions and the user record are permanently
-        removed; the deletion is not reversible.
+        Your transcripts, translations, and summaries are kept until you delete
+        them — individually (delete a session) or all at once (delete your
+        account). Deleting your account permanently removes your sessions and
+        user record; this cannot be undone.
       </p>
 
       <h2 style={styles.h2}>Your rights</h2>
       <ul style={styles.ul}>
         <li>
-          <strong>Access:</strong> use the History tab to view all data we
-          hold about your sessions, or export any session as Markdown from
-          the session detail page.
+          <strong>Access &amp; export:</strong> view all your sessions in the
+          History tab, or export any session as Markdown from its detail page.
         </li>
         <li>
-          <strong>Deletion:</strong> tap your avatar → &quot;Delete
-          account&quot; in the app to permanently delete your data.
+          <strong>Deletion:</strong> tap your avatar → &quot;Delete account&quot;
+          to permanently remove your data.
         </li>
         <li>
-          <strong>Correction / questions:</strong> email{" "}
+          <strong>Correction &amp; questions:</strong> email{" "}
           <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: COLORS.accent }}>
             {CONTACT_EMAIL}
           </a>
-          .
+          . Depending on where you live, you may have additional rights under
+          laws such as the GDPR or CCPA; contact us to exercise them.
         </li>
       </ul>
 
+      <h2 style={styles.h2}>Security</h2>
+      <p style={styles.p}>
+        Data is encrypted in transit (HTTPS/WSS). Your transcripts are
+        accessible only through your authenticated account. No system is
+        perfectly secure, but we use reputable infrastructure providers and
+        limit access to your data.
+      </p>
+
+      <h2 style={styles.h2}>International transfers</h2>
+      <p style={styles.p}>
+        Our processors are based primarily in the United States, so your data
+        may be processed there. By using the Service, you consent to this
+        transfer and processing.
+      </p>
+
       <h2 style={styles.h2}>Cookies</h2>
       <p style={styles.p}>
-        We use cookies only for authentication (keeping you signed in). We do
-        not use third-party tracking cookies or advertising cookies.
+        We use cookies only to keep you signed in (authentication). We do not
+        use advertising or cross-site tracking cookies. Our analytics (Vercel)
+        measures aggregate page views without cookies.
       </p>
 
       <h2 style={styles.h2}>Children</h2>
       <p style={styles.p}>
-        Tarjuman is not intended for children under 13. If you become
-        aware that a child has provided us with personal information, please
-        contact us so we can delete it.
+        Tarjuman is not intended for children under 13. If you believe a child
+        has provided us personal information, contact us and we will delete it.
       </p>
 
       <h2 style={styles.h2}>Changes</h2>
       <p style={styles.p}>
-        We may update this policy from time to time. The &quot;Last
-        updated&quot; date at the top reflects the most recent change.
-        Material changes will be communicated via the email associated with
-        your account.
+        We may update this policy from time to time. The &quot;Last updated&quot;
+        date reflects the most recent change; material changes will be
+        communicated via the email associated with your account.
       </p>
 
       <h2 style={styles.h2}>Contact</h2>
