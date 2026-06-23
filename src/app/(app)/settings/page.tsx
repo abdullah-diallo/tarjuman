@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
 import { COLORS } from "@/lib/constants";
+import { formatDate } from "@/lib/utils";
 import { Icon } from "@/components/shared/icon";
 import { LanguageSelector } from "@/components/recording/language-selector";
 import { Toggle } from "@/components/settings/toggle";
@@ -22,10 +23,37 @@ export default function SettingsPage() {
   const updatePrefs = useMutation(api.preferences.update);
   const updateProfile = useMutation(api.users.updateProfile);
   const deleteAccount = useMutation(api.users.deleteAccount);
+  const subscription = useQuery(api.subscriptions.getMySubscription);
+  const createCheckoutSession = useAction(api.stripe.createCheckoutSession);
+  const createPortalSession = useAction(api.stripe.createPortalSession);
   const { signOut } = useAuthActions();
   const router = useRouter();
 
   const [nameOpen, setNameOpen] = useState(false);
+
+  // Stripe billing (test-mode experiment). Both actions return a { url } we
+  // redirect the whole tab to — Checkout for upgrades, the Customer Portal to
+  // manage/cancel. `subscription` is reactive, so the section flips Free ↔ Pro
+  // the moment the webhook lands.
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingErrorOpen, setBillingErrorOpen] = useState(false);
+  const [billingErrorMessage, setBillingErrorMessage] = useState("");
+
+  const goToStripe = async (
+    create: (args: { origin: string }) => Promise<{ url: string }>
+  ) => {
+    setBillingBusy(true);
+    try {
+      const { url } = await create({ origin: window.location.origin });
+      window.location.href = url;
+    } catch (e) {
+      setBillingBusy(false);
+      setBillingErrorMessage(
+        e instanceof Error ? e.message : "Something went wrong. Please try again."
+      );
+      setBillingErrorOpen(true);
+    }
+  };
 
   // Optimistic local overrides so toggles/pickers feel instant; they fall
   // back to the stored pref, then the app default.
@@ -104,6 +132,16 @@ export default function SettingsPage() {
     border: `1px solid ${COLORS.border}`,
   } as const;
 
+  const isPro = subscription?.plan === "pro";
+  const periodEnd = subscription?.currentPeriodEnd ?? null;
+  const proStatusLine = subscription?.cancelAtPeriodEnd
+    ? periodEnd
+      ? `Cancels ${formatDate(periodEnd)}`
+      : "Cancels at period end"
+    : periodEnd
+      ? `Renews ${formatDate(periodEnd)}`
+      : "Active subscription";
+
   return (
     <div className="flex flex-col flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">
       {/* Header */}
@@ -178,6 +216,65 @@ export default function SettingsPage() {
         <div className="text-[12px] mt-2" style={{ color: COLORS.t3 }}>
           New recordings start with this pair.
         </div>
+      </div>
+
+      {/* Subscription */}
+      <div className="px-5 pt-6">
+        <div className={sectionLabel}>Subscription</div>
+        {subscription === undefined ? (
+          <div
+            className="w-full rounded-2xl px-4 py-3.5"
+            style={cardStyle}
+          >
+            <span className="block text-[14px] font-semibold" style={{ color: COLORS.t3 }}>
+              Loading…
+            </span>
+          </div>
+        ) : isPro ? (
+          <button
+            type="button"
+            onClick={() => void goToStripe(createPortalSession)}
+            disabled={billingBusy}
+            className="w-full rounded-2xl px-4 py-3.5 flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-black/10 transition-colors disabled:opacity-50"
+            style={cardStyle}
+          >
+            <span>
+              <span className="flex items-center gap-2">
+                <span className="text-[14px] font-semibold" style={{ color: COLORS.w }}>
+                  Tarjuman Pro
+                </span>
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wider px-[6px] py-[2px] rounded-md"
+                  style={{ background: COLORS.accentSoft, color: COLORS.accent }}
+                >
+                  ✦ Pro
+                </span>
+              </span>
+              <span className="block text-[12px] mt-0.5" style={{ color: COLORS.t3 }}>
+                {billingBusy ? "Opening billing…" : `${proStatusLine} · Manage billing`}
+              </span>
+            </span>
+            <Icon name="chevron" size={16} color={COLORS.t4} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => void goToStripe(createCheckoutSession)}
+            disabled={billingBusy}
+            className="w-full rounded-2xl px-4 py-3.5 flex items-center justify-between gap-2 text-left cursor-pointer hover:bg-black/10 transition-colors disabled:opacity-50"
+            style={cardStyle}
+          >
+            <span>
+              <span className="block text-[14px] font-semibold" style={{ color: COLORS.w }}>
+                Upgrade to Pro
+              </span>
+              <span className="block text-[12px] mt-0.5" style={{ color: COLORS.t3 }}>
+                {billingBusy ? "Opening checkout…" : "$9 / month · cancel anytime"}
+              </span>
+            </span>
+            <Icon name="sparkle" size={16} color={COLORS.accent} />
+          </button>
+        )}
       </div>
 
       {/* Audio & voice */}
@@ -290,6 +387,17 @@ export default function SettingsPage() {
         confirmLabel="OK"
         cancelLabel={null}
         onConfirm={() => setDeleteErrorOpen(false)}
+      />
+
+      {/* Billing error (Checkout / Portal failed to open) */}
+      <ConfirmDialog
+        open={billingErrorOpen}
+        onOpenChange={setBillingErrorOpen}
+        title="Billing unavailable"
+        message={billingErrorMessage}
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => setBillingErrorOpen(false)}
       />
     </div>
   );

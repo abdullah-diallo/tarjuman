@@ -66,4 +66,34 @@ export default defineSchema({
     ttsEnabled: v.optional(v.boolean()),
     mainSpeakerOnly: v.optional(v.boolean()),
   }).index("by_user", ["userId"]),
+
+  // Stripe billing state — one row per paying user (kept separate from `users`
+  // to avoid write contention between profile edits and webhook-driven billing
+  // updates). The row is created when the user first hits Checkout (so we have
+  // a place to stash `stripeCustomerId`), then the Stripe webhook patches
+  // `plan`/`status`/period as the subscription lifecycle progresses.
+  //
+  // NOTE (test-mode experiment): `plan` is always DERIVED from `status`
+  // (active/trialing → "pro", else "free") so re-delivered or out-of-order
+  // webhooks are idempotent — see convex/subscriptions.ts:upsertFromStripe.
+  subscriptions: defineTable({
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+    subscriptionId: v.optional(v.string()),
+    priceId: v.optional(v.string()),
+    plan: v.union(v.literal("free"), v.literal("pro")),
+    status: v.union(
+      v.literal("active"),
+      v.literal("trialing"),
+      v.literal("past_due"),
+      v.literal("canceled"),
+      v.literal("incomplete")
+    ),
+    currentPeriodEnd: v.optional(v.number()),
+    cancelAtPeriodEnd: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_customer", ["stripeCustomerId"]),
 });

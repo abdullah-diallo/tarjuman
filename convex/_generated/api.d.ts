@@ -15,6 +15,9 @@ import type * as http from "../http.js";
 import type * as passwordReset from "../passwordReset.js";
 import type * as preferences from "../preferences.js";
 import type * as sessions from "../sessions.js";
+import type * as stripe from "../stripe.js";
+import type * as stripeClient from "../stripeClient.js";
+import type * as subscriptions from "../subscriptions.js";
 import type * as users from "../users.js";
 
 import type {
@@ -31,6 +34,9 @@ declare const fullApi: ApiFromModules<{
   passwordReset: typeof passwordReset;
   preferences: typeof preferences;
   sessions: typeof sessions;
+  stripe: typeof stripe;
+  stripeClient: typeof stripeClient;
+  subscriptions: typeof subscriptions;
   users: typeof users;
 }>;
 
