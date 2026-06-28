@@ -271,8 +271,14 @@ export const sweepStaleSessions = internalMutation({
         await ctx.db.delete(s._id); // empty phantom — nothing to keep
         deleted++;
       } else {
+        // Derive a real duration from the last segment's timestamp (seconds
+        // from session start) — the client never called completeSession, so
+        // duration is still 0 and the history card would show 00:00 for a
+        // session with a full transcript. Preserve any pre-set duration.
+        const last = s.segments[s.segments.length - 1];
         await ctx.db.patch(s._id, {
           status: "completed",
+          duration: s.duration > 0 ? s.duration : Math.round(last?.timestamp ?? 0),
           title: s.title ?? deriveTitle(s.segments) ?? undefined,
           updatedAt: Date.now(),
         });
@@ -286,11 +292,18 @@ export const sweepStaleSessions = internalMutation({
 // ─── Queries ───────────────────────────────────────────────────────────────
 
 export const getSession = query({
-  args: { sessionId: v.id("sessions") },
+  // Accept a raw string, not v.id, so a malformed/foreign id from an old
+  // bookmark or a mangled shared link doesn't fail Convex's argument validator
+  // (which throws into the client error boundary as "Something went wrong" with
+  // a dead "Try again"). normalizeId returns null for anything that isn't a
+  // valid id for this table, routing it to the graceful "Session not found" UI.
+  args: { sessionId: v.string() },
   handler: async (ctx, args) => {
     const userId = await auth.getUserId(ctx);
     if (!userId) return null;
-    const session = await ctx.db.get(args.sessionId);
+    const id = ctx.db.normalizeId("sessions", args.sessionId);
+    if (!id) return null;
+    const session = await ctx.db.get(id);
     if (!session) return null;
     if (session.userId !== userId) return null;
     return session;

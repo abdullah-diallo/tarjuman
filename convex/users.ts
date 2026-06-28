@@ -1,6 +1,5 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 import { auth } from "./auth";
 
 /**
@@ -109,15 +108,20 @@ export const deleteAccount = mutation({
       .query("authSessions")
       .withIndex("userId", (q) => q.eq("userId", userId))
       .collect();
-    const killedSessionIds = new Set<Id<"authSessions">>();
     for (const s of authSessions) {
-      killedSessionIds.add(s._id);
-      await ctx.db.delete(s._id);
-    }
-    for (const rt of await ctx.db.query("authRefreshTokens").collect()) {
-      if (killedSessionIds.has(rt.sessionId)) {
+      // Delete this session's refresh tokens via the sessionId index — NOT a
+      // whole-table scan. authRefreshTokens grows with global auth activity
+      // across ALL users, so `.collect()` over the entire table would read
+      // every user's tokens and eventually blow Convex's per-transaction read
+      // cap, making account deletion (GDPR erasure) impossible at scale.
+      const tokens = await ctx.db
+        .query("authRefreshTokens")
+        .withIndex("sessionId", (q) => q.eq("sessionId", s._id))
+        .collect();
+      for (const rt of tokens) {
         await ctx.db.delete(rt._id);
       }
+      await ctx.db.delete(s._id);
     }
 
     // Per-user preferences row (one or none).
@@ -127,6 +131,20 @@ export const deleteAccount = mutation({
       .collect();
     for (const p of prefs) {
       await ctx.db.delete(p._id);
+    }
+
+    // Billing row — delete so we don't leave an orphan `subscriptions` row that
+    // holds the Stripe customer id and points at a now-deleted user (GDPR
+    // erasure; also avoids a stale paid row lingering / re-attaching on
+    // re-signup). NOTE: this does NOT cancel the Stripe subscription itself — a
+    // mutation can't call Stripe. Once billing is live, cancel via Stripe using
+    // the stripeCustomerId from an action BEFORE this delete runs.
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    for (const s of subs) {
+      await ctx.db.delete(s._id);
     }
 
     await ctx.db.delete(userId);
