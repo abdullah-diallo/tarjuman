@@ -201,11 +201,16 @@ export function useTranslator({
             return;
           }
           if (!data.translatedText) {
-            clearPartial();
-            setErrors((prev) => ({
-              ...prev,
-              [seg.id]: "Translator returned no text",
-            }));
+            // FAIL-OPEN: the server returned an empty translation (the model
+            // judged this segment untranslatable / off-language). The Deepgram
+            // source is ground truth and must NEVER be deleted by a translation
+            // verdict — keep the segment with a blank translation so its source
+            // card persists to the live view and the saved session. (Genuine
+            // noise is dropped earlier via data.filtered, handled above.)
+            setTranslations((prev) =>
+              prev[seg.id] === "" ? prev : { ...prev, [seg.id]: "" }
+            );
+            markCompleted();
             return;
           }
           setTranslations((prev) => ({ ...prev, [seg.id]: data.translatedText! }));

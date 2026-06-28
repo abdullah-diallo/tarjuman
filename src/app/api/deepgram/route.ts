@@ -64,9 +64,12 @@ async function getDeepgramProjectId(apiKey: string): Promise<string> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(
-      `Deepgram /v1/projects returned ${res.status}: ${await res.text().catch(() => "")}`
+    // Log the provider body server-side (Vercel logs) but don't echo it to the
+    // client — it can carry account/project hints with no value to the caller.
+    console.error(
+      `[deepgram] /v1/projects ${res.status}: ${await res.text().catch(() => "")}`
     );
+    throw new Error(`Deepgram /v1/projects returned ${res.status}`);
   }
   const body = (await res.json()) as { projects?: { project_id: string }[] };
   const projectId = body.projects?.[0]?.project_id;
@@ -93,9 +96,10 @@ async function mintDeepgramTempKey(apiKey: string): Promise<string> {
     }
   );
   if (!res.ok) {
-    throw new Error(
-      `Deepgram key mint returned ${res.status}: ${await res.text().catch(() => "")}`
+    console.error(
+      `[deepgram] key mint ${res.status}: ${await res.text().catch(() => "")}`
     );
+    throw new Error(`Deepgram key mint returned ${res.status}`);
   }
   const body = (await res.json()) as { key?: string };
   if (!body.key) throw new Error("Deepgram key mint response had no `key` field");
@@ -155,7 +159,14 @@ export async function GET(req: Request) {
   // — it supports every language nova-2 did, with comparable or better
   // accuracy, and adds Arabic plus a `language=multi` mode for sessions where
   // the source language drifts mid-utterance.
-  const model = reqUrl.searchParams.get("model") ?? "nova-3";
+  // Allowlist the model param. The client never sends one (nova-3 is required
+  // for Arabic and is the default), so this only matters as a guard: an
+  // authenticated caller could otherwise steer the minted session onto a
+  // pricier model (e.g. whisper-large) or a bogus value that forces a 1006.
+  const ALLOWED_MODELS = new Set(["nova-3", "nova-2", "nova-2-general"]);
+  const modelParam = reqUrl.searchParams.get("model");
+  const model =
+    modelParam && ALLOWED_MODELS.has(modelParam) ? modelParam : "nova-3";
 
   // Transcribe with the DEDICATED monolingual model for the requested language.
   //
@@ -224,8 +235,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ key: tempKey, url: deepgramUrl });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      console.error("[deepgram] could not issue session credentials:", msg);
       return NextResponse.json(
-        { error: `Failed to mint Deepgram temp key: ${msg}` },
+        { error: "Could not start a transcription session. Please try again." },
         { status: 502 }
       );
     }

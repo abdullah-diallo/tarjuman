@@ -327,8 +327,12 @@ export async function verifyAndEnrichQuran(
     if (result.kind === "found") {
       const body = result.englishBody.trim();
       if (targetIsEnglish && body) {
-        // Replace lead-in (LLM's English) with canonical Muhsin Khan body.
-        out.push(`${body} ${linkMarkdown}`);
+        // KEEP the lead-in (summary prose since the previous citation) and
+        // append the canonical Muhsin Khan body + link. (Previously the lead-in
+        // was dropped, silently deleting summary content before any verified
+        // verse and persisting the corrupted summary.)
+        const lead = leadIn.replace(/\s+$/, "");
+        out.push(lead ? `${lead} ${body} ${linkMarkdown}` : `${body} ${linkMarkdown}`);
       } else {
         // Non-English target, OR no canonical English body available — keep
         // the LLM's own rendering and just upgrade the citation to a verified

@@ -220,11 +220,23 @@ export function useDeepgram({
     let reconnectTimer: number | null = null;
     let attempt = 0;
     let hasEverOpened = false;
+    // Watchdog for a socket that stalls in CONNECTING (captive portal that
+    // 200s the upgrade, cell↔wifi handoff mid-connect, black-holed 101). None
+    // of onopen/onclose/onerror fire in that case, so without this the hook
+    // sits in "connecting" forever with no transcript and no reconnect.
+    let openWatchdog: number | null = null;
+    const clearWatchdog = () => {
+      if (openWatchdog !== null) {
+        window.clearTimeout(openWatchdog);
+        openWatchdog = null;
+      }
+    };
 
     setReconnectAttempt(0);
     setError(null);
 
     const tearDown = () => {
+      clearWatchdog();
       if (reconnectTimer !== null) {
         window.clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -254,6 +266,11 @@ export function useDeepgram({
 
     const scheduleReconnect = () => {
       if (cancelled || !isLive()) return;
+      // Idempotent: if a reconnect is already pending, don't schedule a second
+      // one. The open watchdog can call this directly AND the watchdog's
+      // close() can fire onclose which calls it again — without this guard the
+      // two would arm two timers and race two connect() attempts.
+      if (reconnectTimer !== null) return;
       if (attempt >= RECONNECT_BACKOFF.length) {
         setConnectionState("error");
         setError(
@@ -345,7 +362,29 @@ export function useDeepgram({
       const currentWs = ws;
       liveControlsRef.current.ws = currentWs;
 
+      // Arm the open watchdog: if the socket hasn't reached OPEN within 8s,
+      // force-close it and fall into the normal reconnect/backoff path rather
+      // than hanging in "connecting" indefinitely. onopen/onclose both clear it.
+      clearWatchdog();
+      openWatchdog = window.setTimeout(() => {
+        openWatchdog = null;
+        if (cancelled || !isLive() || ws !== currentWs) return;
+        if (currentWs.readyState !== WebSocket.OPEN) {
+          dbg("[deepgram] open watchdog fired — socket stuck connecting, retrying");
+          try {
+            currentWs.close();
+          } catch {
+            /* ignore */
+          }
+          // onclose may not fire for a black-holed handshake; drive the
+          // reconnect ourselves. (If onclose does fire it clears the watchdog
+          // first, so this can't double-schedule.)
+          scheduleReconnect();
+        }
+      }, 8000);
+
       currentWs.onopen = () => {
+        clearWatchdog();
         dbg("[deepgram] ws onopen — authenticated successfully", {
           subprotocolUsed: currentWs.protocol || "(none echoed back)",
         });
@@ -581,6 +620,7 @@ export function useDeepgram({
       };
 
       currentWs.onclose = (event) => {
+        clearWatchdog();
         dbg("[deepgram] ws onclose", {
           code: event.code,
           reason: event.reason || "(empty)",

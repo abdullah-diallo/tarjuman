@@ -385,6 +385,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Cap input size. A live segment is normally well under 1KB; an 8KB ceiling
+  // is far above any legitimate segment and removes the per-request cost
+  // amplification lever (forwarding a huge body of input tokens to Claude on an
+  // authenticated loop).
+  if (text.length > 8000) {
+    return NextResponse.json({ error: "Segment too large" }, { status: 413 });
+  }
+
   // No-op when source === target. Skipping the upstream call avoids both
   // unnecessary cost and unnecessary latency.
   if (source && source === target) {
@@ -501,11 +509,14 @@ export async function POST(req: NextRequest) {
   // the retry loop above; guard the rest here) so the client's status-based
   // retry keeps working. Only the HTTP-200 success path streams.
   if (!response.ok || !response.body) {
+    // Log the upstream body server-side; don't echo provider diagnostics to the
+    // client (model ids / account hints / internal phrasing aid reconnaissance).
     const errText = await response.text().catch(() => "");
+    console.error(
+      `[translate] upstream HTTP ${response.status}: ${errText.slice(0, 300)}`
+    );
     return NextResponse.json(
-      {
-        error: `Translation failed: HTTP ${response.status} ${errText.slice(0, 200)}`,
-      },
+      { error: "Translation temporarily unavailable." },
       { status: 502 }
     );
   }
@@ -592,8 +603,15 @@ export async function POST(req: NextRequest) {
         // path did, then deliver it in the metadata trailer.
         const parsed = parseMergeDirective(rawText, validContextIds);
         if (!parsed.translation.trim()) {
-          // Empty = the model's "untranslatable noise / off-language" verdict.
-          emitMeta({ translatedText: "", filtered: true, filterReason: "model-judged-noise" });
+          // The model returned an empty translation (its "untranslatable /
+          // off-language" verdict). FAIL-OPEN: emit an empty translatedText
+          // WITHOUT `filtered`, so the client keeps the segment's
+          // Deepgram-transcribed source (ground truth) with a blank translation
+          // rather than deleting it. The deterministic noise filter
+          // (shouldFilterAsNoise above) is the ONLY path that sets filtered=true
+          // and removes a segment; a translation-model verdict must never delete
+          // valid source speech — off-language gating must fail-open.
+          emitMeta({ translatedText: "" });
           controller.close();
           return;
         }

@@ -27,7 +27,14 @@ export function isOffLanguageScript(
   sourceLang: string | undefined
 ): boolean {
   if (!sourceLang || !RTL_LANGS.has(sourceLang.toLowerCase())) return false;
-  const visibleChars = text.trim().replace(/[\s\p{P}\p{S}]/gu, "");
+  // Denominator = LETTERS only. Digits (\p{N}) must NOT count as "non-source
+  // script": with smart_format Deepgram renders spoken numbers as Western (or
+  // Arabic-Indic) digits, so a short valid Arabic segment citing a Hijri year /
+  // ayah / hadith number (e.g. "سنة 1445") would otherwise drop below the 50%
+  // ratio and be wrongly discarded — a fail-CLOSED drop of valid source speech,
+  // which the off-language gate must never do. Stripping everything that is not
+  // a letter leaves only letters in the ratio, so numbers are script-neutral.
+  const visibleChars = text.trim().replace(/[^\p{L}]/gu, "");
   if (visibleChars.length === 0) return false;
   const scriptRe =
     sourceLang.toLowerCase() === "he" ? HEBREW_SCRIPT_RE : ARABIC_SCRIPT_RE;

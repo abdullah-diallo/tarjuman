@@ -152,6 +152,15 @@ export async function createAudioPipeline(): Promise<AudioPipeline> {
     }
   }
 
+  // The mic stream and AudioContext are now OPEN. Everything below can still
+  // throw — most importantly `audioWorklet.addModule("/pcm-worklet.js")` (404 on
+  // a bad deploy, parse error, CSP worker-src/script-src block, or a network
+  // drop on flaky masjid wifi) and the AudioWorkletNode constructor. If any step
+  // throws, release the hot mic + AudioContext before rethrowing — otherwise the
+  // OS "recording" indicator stays lit with no recording happening, and each
+  // user retry leaks another AudioContext against the browser's ~6-per-page cap
+  // until recording can't start at all without a full reload.
+  try {
   const source = audioContext.createMediaStreamSource(sourceStream);
 
   // 120Hz highpass cuts wind rumble + AC hum + foot shuffling. Most wind
@@ -262,4 +271,23 @@ export async function createAudioPipeline(): Promise<AudioPipeline> {
     gainNode: gain,
     teardown,
   };
+  } catch (e) {
+    // Graph construction failed after the mic + AudioContext were opened.
+    // Release both so the OS mic indicator goes off and we don't leak an
+    // AudioContext against the browser's ~6-per-page cap, then rethrow so the
+    // caller's catch surfaces the error and offers "Try again".
+    sourceStream.getTracks().forEach((t) => {
+      try {
+        t.stop();
+      } catch {
+        /* already stopped */
+      }
+    });
+    try {
+      await audioContext.close();
+    } catch {
+      /* already closed */
+    }
+    throw e instanceof Error ? e : new Error(String(e));
+  }
 }

@@ -276,10 +276,18 @@ export async function verifyAndEnrich(text: string): Promise<{
     const leadIn = text.slice(cursor, m.index);
 
     if (result.kind === "found") {
-      // sunnah.com is the authority — replace the lead-in (LLM's own
-      // rendering) with the canonical English body, end with the link.
+      // sunnah.com is the authority for the hadith TEXT. But `leadIn` is the
+      // summary's own prose since the PREVIOUS citation — not merely this
+      // hadith's rendering — so it must be preserved. Keep the lead-in, then
+      // append the canonical English body + link.
+      //
+      // (Previously the lead-in was dropped here, which silently DELETED every
+      // sentence of the summary preceding a verified hadith and replaced it
+      // with the raw hadith body — corrupting and persisting the summary on the
+      // happy path. Never delete the speaker's/summary's own words.)
       const body = result.englishBody.trim();
-      out.push(`${body} ${linkMarkdown}`);
+      const lead = leadIn.replace(/\s+$/, "");
+      out.push(lead ? `${lead} ${body} ${linkMarkdown}` : `${body} ${linkMarkdown}`);
       citations.push({
         raw: m.raw,
         collectionDisplay: m.collectionDisplay,

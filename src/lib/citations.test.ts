@@ -80,6 +80,44 @@ describe("verifyAndEnrich fail-safe (lookup unavailable)", () => {
   });
 });
 
+describe("verifyAndEnrich found-path — never deletes the summary lead-in", () => {
+  // Regression lock: the verified ("found") branch used to drop `leadIn` — the
+  // summary prose since the previous citation — replacing it with the raw
+  // hadith body. That silently deleted summary content before any verified
+  // hadith. Stub the dataset to return a real body and assert the lead-in
+  // survives. Unique hadith number (7777) avoids the shared in-memory cache.
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        status: 200,
+        ok: true,
+        json: async () => ({
+          hadiths: [
+            { hadithnumber: 7777, text: "Actions are but by intentions." },
+          ],
+        }),
+      })
+    );
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps the prose before the citation AND appends the canonical body + link", async () => {
+    const lead = "The khateeb urged sincerity and warned against showing off.";
+    const { text, citations } = await verifyAndEnrich(
+      `${lead} (Sahih al-Bukhari 7777)`
+    );
+    expect(text).toContain(lead); // summary prose preserved
+    expect(text).toContain("Actions are but by intentions."); // canonical body added
+    expect(text).toContain(
+      "[(Sahih al-Bukhari 7777)](https://sunnah.com/bukhari:7777)"
+    );
+    expect(citations[0].verified).toBe(true);
+  });
+});
+
 describe("parseQuranCitations — surah names and numbers resolve", () => {
   it("resolves a named surah", () => {
     const [m] = parseQuranCitations("(Quran Al-Baqarah:255)");
