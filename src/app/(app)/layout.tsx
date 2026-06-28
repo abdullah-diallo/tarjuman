@@ -7,6 +7,7 @@ import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../../convex/_generated/api";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { NavVisibilityProvider } from "@/components/layout/nav-visibility";
+import { Icon } from "@/components/shared/icon";
 import { COLORS } from "@/lib/constants";
 
 /**
@@ -53,12 +54,17 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           background: COLORS.bg,
         }}
       >
+        {/* Branded gate while Convex Auth resolves — gentle pulse, not a bare
+            spinner, so the app reads as "loading" on-brand. */}
         <div
-          className="w-5 h-5 rounded-full border-2 animate-spin"
+          className="w-12 h-12 rounded-2xl grid place-items-center animate-pulse"
           style={{
-            borderColor: `${COLORS.accent} transparent ${COLORS.accent} ${COLORS.accent}`,
+            background: COLORS.accent,
+            boxShadow: `0 0 30px ${COLORS.accent}40`,
           }}
-        />
+        >
+          <Icon name="mic" size={22} color="#0A0F1C" />
+        </div>
       </div>
     );
   }

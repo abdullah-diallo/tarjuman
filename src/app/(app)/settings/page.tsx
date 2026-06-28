@@ -11,6 +11,7 @@ import { COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { usePlan } from "@/hooks/use-plan";
 import { Icon } from "@/components/shared/icon";
+import { Skeleton } from "@/components/shared/skeleton";
 import { LanguageSelector } from "@/components/recording/language-selector";
 import { Toggle } from "@/components/settings/toggle";
 import { PromptDialog } from "@/components/shared/prompt-dialog";
@@ -72,11 +73,19 @@ export default function SettingsPage() {
 
   if (me === undefined || prefs === undefined) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-col flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+84px)]">
         <div
-          className="w-5 h-5 rounded-full border-2 animate-spin"
-          style={{ borderColor: COLORS.borderLight, borderTopColor: COLORS.accent }}
-        />
+          className="px-5 py-5 flex flex-col gap-2"
+          style={{ borderBottom: `1px solid ${COLORS.border}` }}
+        >
+          <Skeleton style={{ width: 90, height: 11 }} />
+          <Skeleton style={{ width: "50%", height: 22 }} />
+        </div>
+        <div className="px-5 py-5 flex flex-col gap-5">
+          <Skeleton style={{ width: "100%", height: 64 }} rounded={16} />
+          <Skeleton style={{ width: "100%", height: 100 }} rounded={16} />
+          <Skeleton style={{ width: "100%", height: 64 }} rounded={16} />
+        </div>
       </div>
     );
   }

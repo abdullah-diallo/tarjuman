@@ -6,6 +6,11 @@ import { useParams } from "next/navigation";
 import { COLORS } from "@/lib/constants";
 import { formatDate, formatDuration, getLangName } from "@/lib/utils";
 import { Icon } from "@/components/shared/icon";
+import {
+  Skeleton,
+  HeaderSkeleton,
+  SegmentSkeleton,
+} from "@/components/shared/skeleton";
 import { SessionBody } from "@/components/session/session-body";
 import { copyToClipboard } from "@/lib/clipboard";
 import { useSession } from "@/hooks/use-sessions";
@@ -39,19 +44,29 @@ export default function SessionDetailPage() {
     [session?.segments]
   );
 
-  // Loading
+  // Loading — outline the real layout (header → language row → summary CTA →
+  // transcript) so content resolves into place instead of a spinner popping.
   if (session === undefined) {
     return (
       <div
-        className="flex flex-col flex-1 items-center justify-center"
+        className="flex flex-col flex-1"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 84px)" }}
       >
+        <HeaderSkeleton />
         <div
-          className="w-5 h-5 rounded-full border-2 animate-spin"
-          style={{
-            borderColor: `${COLORS.accent} transparent ${COLORS.accent} ${COLORS.accent}`,
-          }}
-        />
+          className="px-5 py-2 flex items-center justify-center"
+          style={{ borderBottom: `1px solid ${COLORS.border}` }}
+        >
+          <Skeleton style={{ width: 140, height: 12 }} />
+        </div>
+        <div className="flex-1 px-5 py-4">
+          <Skeleton style={{ width: "100%", height: 46 }} rounded={16} />
+          <div className="mt-5">
+            <SegmentSkeleton widths={["92%", "68%"]} />
+            <SegmentSkeleton widths={["86%", "74%"]} />
+            <SegmentSkeleton widths={["95%", "60%"]} />
+          </div>
+        </div>
       </div>
     );
   }

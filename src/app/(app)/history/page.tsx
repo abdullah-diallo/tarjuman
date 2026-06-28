@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { COLORS } from "@/lib/constants";
 import { getLangName } from "@/lib/utils";
 import { Icon } from "@/components/shared/icon";
+import { Skeleton } from "@/components/shared/skeleton";
 import { SessionCard } from "@/components/session/session-card";
 import { useAllSessions } from "@/hooks/use-sessions";
 
@@ -87,6 +88,14 @@ export default function HistoryPage() {
           </div>
         )}
       </div>
+
+      {sessions === undefined && (
+        <div className="flex-1 overflow-auto px-5 py-4 flex flex-col gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} style={{ width: "100%", height: 84 }} rounded={16} />
+          ))}
+        </div>
+      )}
 
       {sessions !== undefined && total === 0 && (
         <div className="flex-1 grid place-items-center px-8 text-center">
