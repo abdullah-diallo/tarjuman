@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as AlertDialog from "@radix-ui/react-alert-dialog";
 import { COLORS } from "@/lib/constants";
 
@@ -38,6 +38,12 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Clear a prior failure's message each time the dialog reopens, so a stale
+  // error from a previous attempt doesn't show on a fresh open.
+  useEffect(() => {
+    if (open) setError(null);
+  }, [open]);
 
   const handleConfirm = async () => {
     if (busy) return;

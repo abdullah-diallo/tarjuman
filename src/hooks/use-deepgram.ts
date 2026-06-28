@@ -371,14 +371,24 @@ export function useDeepgram({
         if (cancelled || !isLive() || ws !== currentWs) return;
         if (currentWs.readyState !== WebSocket.OPEN) {
           dbg("[deepgram] open watchdog fired — socket stuck connecting, retrying");
+          // Detach handlers BEFORE the forced close. A close() on a CONNECTING
+          // socket fires onclose with code 1006 + !hasEverOpened, which would
+          // otherwise hit the handshake-rejection branch and flash a misleading
+          // "temp key rejected" terminal error instead of silently reconnecting.
+          // We drive the reconnect ourselves here.
+          currentWs.onopen = null;
+          currentWs.onmessage = null;
+          currentWs.onerror = null;
+          currentWs.onclose = null;
+          if (ws === currentWs) ws = null;
+          if (liveControlsRef.current.ws === currentWs) {
+            liveControlsRef.current = { ws: null };
+          }
           try {
             currentWs.close();
           } catch {
             /* ignore */
           }
-          // onclose may not fire for a black-holed handshake; drive the
-          // reconnect ourselves. (If onclose does fire it clears the watchdog
-          // first, so this can't double-schedule.)
           scheduleReconnect();
         }
       }, 8000);
@@ -397,6 +407,7 @@ export function useDeepgram({
           return;
         }
         setConnectionState("connected");
+        setError(null); // clear any stale error from a prior failed attempt
         attempt = 0;
         hasEverOpened = true;
         setReconnectAttempt(0);

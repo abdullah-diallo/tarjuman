@@ -48,6 +48,7 @@ export function PromptDialog({
   useEffect(() => {
     if (open) {
       setValue(defaultValue);
+      setError(null); // clear a prior attempt's error on reopen
       // Defer focus until after Radix mounts the content node.
       setTimeout(() => {
         inputRef.current?.focus();
