@@ -36,6 +36,10 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  // Run on pages + API + auth routes; skip Next internals + the favicon.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  // Run on PAGE loads (where the OAuth/PKCE flow happens and the canonical-host
+  // fix matters); skip Next internals, the favicon, AND /api. API routes are
+  // same-origin once a page has loaded on the canonical host, and a 308 on a
+  // cross-origin POST to an alias can drop the request body on some clients —
+  // the auth fix never needs to redirect them.
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

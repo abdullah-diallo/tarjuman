@@ -1,10 +1,16 @@
 // Script-detection helpers for off-language gating.
 //
-// Deepgram runs the realtime connection for RTL sources (Arabic, ...) in
-// multilingual mode (`language=multi`, nova-3). In that mode non-source speech
-// transcribes in its OWN script — e.g. English comes through as Latin text, not
-// Arabic-transliterated gibberish — so a script-ratio check reliably flags
-// off-language segments. This replaced the removed OpenAI-Whisper language ID.
+// IMPORTANT (was previously documented wrong): Deepgram's realtime connection is
+// FORCED to the source language (e.g. language=ar) — `language=multi` does NOT
+// support Arabic, so it can't be used for the primary RTL case (see
+// src/app/api/deepgram/route.ts). Under a forced source language Deepgram
+// TRANSLITERATES off-language speech into the source script (English "okay" →
+// "اوكي"), so a transliterated English aside is ~100% source-script and this
+// ratio gate does NOT catch it — the active off-language defense is the LLM's
+// transliteration/noise verdict in /api/translate. This gate still (a) catches
+// the cases where Deepgram DOES emit Latin text in an RTL session, and (b) must
+// FAIL-OPEN: it counts letters only, so valid Arabic containing digits (Hijri
+// years, ayah/hadith numbers) is never wrongly dropped.
 //
 // Used both client-side (instant drop in use-deepgram, before a segment renders)
 // and server-side (the noise filter in /api/translate, as a backstop).
@@ -12,8 +18,8 @@
 const ARABIC_SCRIPT_RE = /[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/;
 const HEBREW_SCRIPT_RE = /[֐-׿]/;
 
-/** Forced RTL source languages: the STT connection runs in Deepgram
- *  multilingual mode for these, and their transcripts are script-gated. */
+/** RTL source languages whose transcripts are script-gated. The STT connection
+ *  is forced to the source language for these (NOT multilingual) — see header. */
 export const RTL_LANGS = new Set(["ar", "ur", "he", "fa", "ps", "sd"]);
 
 /**
