@@ -1,5 +1,6 @@
 import { MarketingNav } from "@/components/landing/marketing-nav";
 import { LiveDemo } from "@/components/landing/live-demo";
+import { TryLive } from "@/components/landing/try-live";
 import { Features } from "@/components/landing/features";
 import { TryItFree } from "@/components/landing/try-it-free";
 import { UseCases } from "@/components/landing/use-cases";
@@ -19,8 +20,9 @@ export default function Home() {
       <JsonLd />
       <MarketingNav />
 
-      {/* Hero — pitch + CTA beside the live demo on desktop; stacked on mobile */}
-      <section className="relative overflow-hidden px-6 pt-10 pb-16 sm:pt-14 sm:pb-24">
+      {/* Hero — pitch + CTA beside the live demo on desktop; stacked on mobile.
+          Extra top padding clears the floating island nav. */}
+      <section className="relative overflow-hidden px-6 pt-24 pb-16 sm:pt-28 sm:pb-24">
         <div
           aria-hidden
           className="hero-glow pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[640px] w-[640px] -translate-x-1/2 -translate-y-1/2 rounded-full"
@@ -81,6 +83,22 @@ export default function Home() {
             <LiveDemo />
           </Reveal>
         </div>
+      </section>
+
+      {/* Interactive, no-sign-up trial — speak and watch it translate live */}
+      <section id="try" className="w-full max-w-5xl mx-auto px-6 py-16 sm:py-24">
+        <Reveal>
+          <h2 className="text-2xl sm:text-3xl font-bold text-center leading-tight">
+            Test it right now — no sign-up
+          </h2>
+          <p className="mt-3 text-center text-[var(--color-text-2)] max-w-xl mx-auto">
+            Pick a language, tap the mic, and start talking. You&apos;ll see it
+            transcribed and translated live, right here in your browser.
+          </p>
+        </Reveal>
+        <Reveal delay={120} className="mt-10">
+          <TryLive />
+        </Reveal>
       </section>
 
       {/* Sections self-animate (heading first, then items stagger in) */}

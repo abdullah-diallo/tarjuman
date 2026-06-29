@@ -16,6 +16,7 @@ const AuthModal = dynamic(
 );
 
 const LINKS = [
+  { href: "#try", label: "Try it" },
   { href: "#features", label: "Features" },
   { href: "#use-cases", label: "Use cases" },
   { href: "#faq", label: "FAQ" },
@@ -65,18 +66,26 @@ export function MarketingNav() {
   };
 
   return (
-    <header
-      className="sticky top-0 z-50 transition-colors duration-300"
-      style={{
-        background: scrolled ? "rgba(6,11,24,0.72)" : "transparent",
-        backdropFilter: scrolled ? "blur(16px) saturate(160%)" : "none",
-        WebkitBackdropFilter: scrolled ? "blur(16px) saturate(160%)" : "none",
-        borderBottom: `1px solid ${
-          scrolled ? "var(--color-border-light)" : "transparent"
-        }`,
-      }}
-    >
-      <nav className="max-w-6xl mx-auto px-5 sm:px-6 h-16 flex items-center justify-between gap-4">
+    // Floating "island" tile — translucent glass, detached from the edges. The
+    // outer header is just a sticky, click-through spacer; the tile itself is
+    // the interactive surface.
+    <header className="sticky top-0 z-50 px-3 pt-3 pointer-events-none">
+      <nav
+        className="pointer-events-auto mx-auto max-w-5xl rounded-2xl px-3.5 sm:px-5 h-14 flex items-center justify-between gap-4 transition-all duration-300"
+        style={{
+          background: scrolled ? "rgba(14,21,37,0.7)" : "rgba(14,21,37,0.42)",
+          backdropFilter: "blur(18px) saturate(160%)",
+          WebkitBackdropFilter: "blur(18px) saturate(160%)",
+          borderWidth: 1,
+          borderStyle: "solid",
+          borderColor: scrolled
+            ? "var(--color-border-light)"
+            : "var(--color-border-faint)",
+          boxShadow: scrolled
+            ? "0 12px 34px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06)"
+            : "0 6px 20px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05)",
+        }}
+      >
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
           <span className="w-9 h-9 rounded-xl bg-[var(--color-accent)] grid place-items-center shadow-[0_0_24px_rgba(46,204,113,0.4)] transition-transform group-hover:scale-105">
