@@ -21,7 +21,7 @@ const USE_CASES = [
 
 export function UseCases() {
   return (
-    <section className="w-full bg-[var(--color-surface)] border-y border-[var(--color-border-light)]">
+    <section id="use-cases" className="w-full bg-[var(--color-surface)] border-y border-[var(--color-border-light)]">
       <div className="max-w-5xl mx-auto px-6 py-16 sm:py-24">
         <Reveal>
           <h2 className="text-2xl sm:text-3xl font-bold text-center leading-tight">

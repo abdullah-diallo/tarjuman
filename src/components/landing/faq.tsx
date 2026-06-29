@@ -6,7 +6,7 @@ import { FaqItem } from "./faq-item";
 // emitted by json-ld.tsx; answers live in the DOM, so they stay crawlable.
 export function Faq() {
   return (
-    <section className="w-full max-w-3xl mx-auto px-6 py-16 sm:py-24">
+    <section id="faq" className="w-full max-w-3xl mx-auto px-6 py-16 sm:py-24">
       <Reveal>
         <h2 className="text-2xl sm:text-3xl font-bold text-center leading-tight">
           Frequently asked questions

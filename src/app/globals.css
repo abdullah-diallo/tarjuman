@@ -105,3 +105,33 @@ html {
     animation: none;
   }
 }
+
+/* Landing live-demo audio meter — looping equalizer bars (see live-demo.tsx). */
+@keyframes demo-eq {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+.demo-eq-bar {
+  animation: demo-eq 900ms ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .demo-eq-bar {
+    animation: none;
+  }
+}
+
+/* Smooth in-page scrolling for the marketing-nav section anchors, with an
+   offset so the sticky nav doesn't cover the target heading. Motion-gated. */
+html {
+  scroll-padding-top: 5rem;
+}
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}

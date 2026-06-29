@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation } from "convex/react";
 import { COLORS } from "@/lib/constants";
@@ -16,6 +16,30 @@ interface SessionCardProps {
   session: SessionListItem;
 }
 
+/**
+ * Place the options menu as a flyout BESIDE the kebab (to its left, vertically
+ * centered on the button) rather than dropping down over the cards below it.
+ * Flips to the right only if the left gutter can't fit it; clamps to the
+ * viewport so it never spills off-screen.
+ */
+function sidePlacement(
+  r: DOMRect,
+  width: number,
+  height: number
+): React.CSSProperties {
+  const gap = 8;
+  const margin = 8;
+  const left =
+    r.left - gap - width >= margin
+      ? r.left - gap - width
+      : Math.min(r.right + gap, window.innerWidth - width - margin);
+  const top = Math.max(
+    margin,
+    Math.min(r.top + r.height / 2 - height / 2, window.innerHeight - height - margin)
+  );
+  return { position: "fixed", top, left };
+}
+
 export function SessionCard({ session }: SessionCardProps) {
   const updateTitle = useMutation(api.sessions.updateTitle);
   const deleteSession = useMutation(api.sessions.deleteSession);
@@ -27,6 +51,10 @@ export function SessionCard({ session }: SessionCardProps) {
   // card's `overflow-hidden` and the scrolling list (an absolute menu clips).
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties | null>(null);
   const kebabRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  // The kebab's rect at open time — used to recompute placement once the menu
+  // has mounted and its real size is known.
+  const anchorRef = useRef<DOMRect | null>(null);
 
   const title = session.title ?? "Untitled session";
   const hasSummary = Boolean(session.summary);
@@ -55,17 +83,25 @@ export function SessionCard({ session }: SessionCardProps) {
     const btn = kebabRef.current;
     if (btn) {
       const r = btn.getBoundingClientRect();
-      const right = window.innerWidth - r.right;
-      // Flip upward near the bottom of the viewport so a ~2-item menu isn't clipped.
-      const openUp = r.bottom + 100 > window.innerHeight;
-      setMenuStyle(
-        openUp
-          ? { position: "fixed", bottom: window.innerHeight - r.top + 6, right }
-          : { position: "fixed", top: r.bottom + 6, right }
-      );
+      anchorRef.current = r;
+      // Provisional side placement using the menu's known size (w-44 = 176px,
+      // ~92px tall for two items). Refined after mount by the layout effect
+      // below — the estimate avoids an opening flicker.
+      setMenuStyle(sidePlacement(r, 176, 92));
     }
     setMenuOpen(true);
   };
+
+  // Once the menu is in the DOM, measure it and re-place it precisely so the
+  // flyout is vertically centered on the kebab regardless of item heights.
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    const menu = menuRef.current;
+    const r = anchorRef.current;
+    if (!menu || !r) return;
+    const rect = menu.getBoundingClientRect();
+    setMenuStyle(sidePlacement(r, rect.width, rect.height));
+  }, [menuOpen]);
 
   const onRename = () => {
     setMenuOpen(false);
@@ -169,6 +205,7 @@ export function SessionCard({ session }: SessionCardProps) {
             onClick={() => setMenuOpen(false)}
           />
           <div
+            ref={menuRef}
             role="menu"
             className="z-50 w-44 rounded-xl overflow-hidden"
             style={{

@@ -26,7 +26,7 @@ const FEATURES = [
 
 export function Features() {
   return (
-    <section className="w-full max-w-5xl mx-auto px-6 py-16 sm:py-24">
+    <section id="features" className="w-full max-w-5xl mx-auto px-6 py-16 sm:py-24">
       <Reveal>
         <h2 className="text-2xl sm:text-3xl font-bold text-center max-w-2xl mx-auto leading-tight">
           Everything you need to follow an Arabic lecture
