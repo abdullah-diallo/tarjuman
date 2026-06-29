@@ -2,7 +2,13 @@ import { query, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { auth } from "./auth";
 import { planFromStatus } from "./stripeClient";
-import { PLAN_LIMITS, monthStartMs, limitForWire, atLimit } from "./billingLimits";
+import {
+  PLAN_LIMITS,
+  monthStartMs,
+  limitForWire,
+  atLimit,
+  BILLING_ENABLED,
+} from "./billingLimits";
 
 /**
  * Billing state for the current user. Read-side is a reactive query so the
@@ -70,14 +76,21 @@ export const getMyUsageThisMonth = query({
     const plan = sub?.plan ?? "free";
     const limits = PLAN_LIMITS[plan];
 
-    if (plan !== "free") {
-      // Unlimited tier — no need to scan sessions.
+    // Unlimited path — skip the session scan entirely. This covers BOTH:
+    //  • billing not live yet (BILLING_ENABLED=false) → everyone is unlimited,
+    //    because the free caps only mean anything once we can take money; and
+    //  • any paid tier (pro/scholar), which is always unlimited.
+    // Reporting null limits also hides the usage meters in the UI.
+    if (!BILLING_ENABLED || plan !== "free") {
       return {
         plan,
         sessionsUsed: 0,
         summariesUsed: 0,
-        sessionsLimit: limitForWire(limits.sessionsPerMonth),
-        summariesLimit: limitForWire(limits.summariesPerMonth),
+        // Both cases are unlimited: pro/scholar limits are Infinity, and a free
+        // user with billing off is treated as unlimited. Force null either way
+        // (don't read the free "4" here) so no cap or usage meter shows.
+        sessionsLimit: null,
+        summariesLimit: null,
         canStartSession: true,
         canSummarize: true,
       };

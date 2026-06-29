@@ -25,6 +25,23 @@
 
 export type Plan = "free" | "pro" | "scholar";
 
+/**
+ * MASTER BILLING SWITCH — while `false`, every user is treated as UNLIMITED:
+ * the free-tier session/summary caps are not enforced, and no "Upgrade" wall or
+ * usage meter appears anywhere. This is the single switch the record gate, the
+ * summary gate, and the Settings usage line all key off — they all read
+ * subscriptions.getMyUsageThisMonth, which honors this flag.
+ *
+ * WHY OFF (2026-06-29): Stripe is still test-mode and its webhook points at the
+ * DEV Convex deployment, so a gated free user has NO working way to pay their
+ * way out — and the founder + the 2026-07-03 field test must be able to record
+ * and summarize without slamming into a 4-session wall. (A real test session
+ * burned the free quota and locked the app behind a dead-end paywall.) Flip to
+ * `true` only once billing can take REAL money in production (live Stripe keys
+ * + prod webhook). See [[stripe-billing-experiment]] and [[plan-tiers-roadmap]].
+ */
+export const BILLING_ENABLED = false;
+
 export interface PlanLimits {
   /** Max NEW sessions creatable per calendar month. Infinity = unlimited. */
   sessionsPerMonth: number;

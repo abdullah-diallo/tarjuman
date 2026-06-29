@@ -6,7 +6,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { api } from "../../../../convex/_generated/api";
-import { PLAN_META } from "../../../../convex/billingLimits";
+import { PLAN_META, BILLING_ENABLED } from "../../../../convex/billingLimits";
 import { COLORS } from "@/lib/constants";
 import { formatDate } from "@/lib/utils";
 import { usePlan } from "@/hooks/use-plan";
@@ -267,6 +267,17 @@ export default function SettingsPage() {
             </span>
             <Icon name="chevron" size={16} color={COLORS.t4} />
           </button>
+        ) : !BILLING_ENABLED ? (
+          // Billing not live yet — don't push a paid upgrade that routes to a
+          // checkout we can't fulfill. Just confirm everything's unlocked.
+          <div className="w-full rounded-2xl px-4 py-3.5" style={cardStyle}>
+            <span className="block text-[14px] font-semibold" style={{ color: COLORS.w }}>
+              Free
+            </span>
+            <span className="block text-[12px] mt-0.5" style={{ color: COLORS.t3 }}>
+              All features unlocked
+            </span>
+          </div>
         ) : (
           <Link
             href="/plans"
