@@ -1,77 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { COLORS } from "@/lib/constants";
 
 /**
- * Looping preview of the recording screen, framed as an iPhone 17 Pro Max. It
- * cycles through different language PAIRS (not just everything → English): each
- * "lesson" types its own source text word-by-word and fades in a translation in
- * the matching target language, with the header showing that pair. So the demo
- * shows real translation between many languages, both directions.
+ * Looping preview of the recording screen, framed as an iPhone 17 Pro Max. Each
+ * cycle picks a RANDOM source language and a random (different) target language
+ * and shows the same well-known phrase typed in the source, then translated into
+ * the target — so any language can pair with any other, both directions. This
+ * works because every phrase is hand-authored in every demo language.
  *
- * Visual demo, not a live capture. Hand-authored, accurate content — well-known
- * phrases (Basmala, Shahada, Alhamdulillah, a famous saying / hadith) rendered
- * by hand in each language, with "Allah" preserved to show the terminology
- * handling. Respects prefers-reduced-motion.
+ * Visual demo, not a live capture. Phrases (Alhamdulillah, the Basmala, a famous
+ * saying on seeking knowledge) are hand-translated, with "Allah" preserved to
+ * show the terminology handling. Respects prefers-reduced-motion.
  */
-interface Lesson {
-  srcLang: string;
-  tgtLang: string;
-  srcRtl: boolean;
-  tgtRtl: boolean;
-  src: string;
-  tgt: string;
-}
+type LangCode = "ar" | "en" | "fr" | "es" | "de" | "tr" | "id" | "ur";
 
-const LESSONS: Lesson[] = [
+const LANGS: { code: LangCode; label: string; rtl: boolean }[] = [
+  { code: "ar", label: "Arabic", rtl: true },
+  { code: "en", label: "English", rtl: false },
+  { code: "fr", label: "French", rtl: false },
+  { code: "es", label: "Spanish", rtl: false },
+  { code: "de", label: "German", rtl: false },
+  { code: "tr", label: "Turkish", rtl: false },
+  { code: "id", label: "Indonesian", rtl: false },
+  { code: "ur", label: "Urdu", rtl: true },
+];
+const LANG_BY_CODE = Object.fromEntries(LANGS.map((l) => [l.code, l])) as Record<
+  LangCode,
+  (typeof LANGS)[number]
+>;
+
+const PHRASES: Record<LangCode, string>[] = [
   {
-    srcLang: "Arabic",
-    tgtLang: "English",
-    srcRtl: true,
-    tgtRtl: false,
-    src: "الحمد لله رب العالمين، والصلاة والسلام على رسول الله ﷺ",
-    tgt: "All praise is due to Allah, Lord of the worlds, and peace be upon the Messenger of Allah ﷺ.",
+    ar: "الحمد لله رب العالمين",
+    en: "All praise is due to Allah, Lord of the worlds.",
+    fr: "Toutes les louanges reviennent à Allah, Seigneur des mondes.",
+    es: "Todas las alabanzas pertenecen a Allah, Señor de los mundos.",
+    de: "Alles Lob gebührt Allah, dem Herrn der Welten.",
+    tr: "Hamd, âlemlerin Rabbi olan Allah'a mahsustur.",
+    id: "Segala puji bagi Allah, Tuhan semesta alam.",
+    ur: "تمام تعریفیں اللہ کے لیے ہیں جو سارے جہانوں کا رب ہے",
   },
   {
-    srcLang: "French",
-    tgtLang: "Spanish",
-    srcRtl: false,
-    tgtRtl: false,
-    src: "Au nom d'Allah, le Tout Miséricordieux, le Très Miséricordieux.",
-    tgt: "En el nombre de Allah, el Compasivo, el Misericordioso.",
+    ar: "بسم الله الرحمن الرحيم",
+    en: "In the name of Allah, the Most Gracious, the Most Merciful.",
+    fr: "Au nom d'Allah, le Tout Miséricordieux, le Très Miséricordieux.",
+    es: "En el nombre de Allah, el Compasivo, el Misericordioso.",
+    de: "Im Namen Allahs, des Allerbarmers, des Barmherzigen.",
+    tr: "Rahman ve Rahim olan Allah'ın adıyla.",
+    id: "Dengan nama Allah, Yang Maha Pengasih, Maha Penyayang.",
+    ur: "اللہ کے نام سے جو نہایت مہربان رحم والا ہے",
   },
   {
-    srcLang: "Turkish",
-    tgtLang: "German",
-    srcRtl: false,
-    tgtRtl: false,
-    src: "Allah'tan başka ilah yoktur, Muhammed O'nun elçisidir.",
-    tgt: "Es gibt keinen Gott außer Allah, und Muhammad ist Sein Gesandter.",
-  },
-  {
-    srcLang: "English",
-    tgtLang: "Arabic",
-    srcRtl: false,
-    tgtRtl: true,
-    src: "Seek knowledge from the cradle to the grave.",
-    tgt: "اطلبوا العلم من المهد إلى اللحد.",
-  },
-  {
-    srcLang: "Indonesian",
-    tgtLang: "French",
-    srcRtl: false,
-    tgtRtl: false,
-    src: "Segala puji bagi Allah, Tuhan semesta alam.",
-    tgt: "Toutes les louanges appartiennent à Allah, Seigneur des mondes.",
-  },
-  {
-    srcLang: "Urdu",
-    tgtLang: "Turkish",
-    srcRtl: true,
-    tgtRtl: false,
-    src: "بے شک اعمال کا دارومدار نیتوں پر ہے",
-    tgt: "Şüphesiz ameller niyetlere göredir.",
+    ar: "اطلبوا العلم من المهد إلى اللحد",
+    en: "Seek knowledge from the cradle to the grave.",
+    fr: "Cherchez la connaissance du berceau jusqu'à la tombe.",
+    es: "Buscad el conocimiento desde la cuna hasta la tumba.",
+    de: "Suche Wissen von der Wiege bis zum Grabe.",
+    tr: "Beşikten mezara kadar ilim öğrenin.",
+    id: "Tuntutlah ilmu dari buaian hingga liang lahat.",
+    ur: "علم حاصل کرو گہوارے سے قبر تک",
   },
 ];
 
@@ -79,10 +68,15 @@ const MS_PER_WORD = 150;
 
 export function LiveDemo() {
   const [reduce, setReduce] = useState(false);
-  const [lesson, setLesson] = useState(0);
+  // Deterministic initial pair so SSR and the first client render match; the
+  // effect switches to random picks right after mount.
+  const [phrase, setPhrase] = useState(0);
+  const [src, setSrc] = useState<LangCode>("ar");
+  const [tgt, setTgt] = useState<LangCode>("en");
   const [words, setWords] = useState(0);
   const [tgtShown, setTgtShown] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const lastKey = useRef("");
 
   useEffect(() => {
     if (
@@ -92,7 +86,6 @@ export function LiveDemo() {
       // One-shot reduced-motion fallback (post-hydration).
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setReduce(true);
-      setLesson(0);
       setWords(999);
       setTgtShown(true);
       setElapsed(6);
@@ -108,20 +101,39 @@ export function LiveDemo() {
       timers.push(id);
     };
 
-    const play = (lessonIdx: number) => {
-      const l = LESSONS[lessonIdx];
-      const count = l.src.split(" ").length;
-      setLesson(lessonIdx);
+    const pick = () => {
+      // random source + a different random target; avoid repeating the exact
+      // previous combination so the loop always feels fresh.
+      for (let tries = 0; tries < 12; tries++) {
+        const p = Math.floor(Math.random() * PHRASES.length);
+        const si = Math.floor(Math.random() * LANGS.length);
+        let ti = Math.floor(Math.random() * LANGS.length);
+        if (ti === si) ti = (ti + 1) % LANGS.length;
+        const key = `${p}:${si}:${ti}`;
+        if (key !== lastKey.current) {
+          lastKey.current = key;
+          return { p, s: LANGS[si].code, t: LANGS[ti].code };
+        }
+      }
+      return { p: 0, s: "ar" as LangCode, t: "en" as LangCode };
+    };
+
+    const play = () => {
+      const { p, s, t } = pick();
+      const count = PHRASES[p][s].split(" ").length;
+      setPhrase(p);
+      setSrc(s);
+      setTgt(t);
       setWords(0);
       setTgtShown(false);
       setElapsed(0);
       for (let w = 1; w <= count; w++) after(MS_PER_WORD * w, () => setWords(w));
       const doneWords = MS_PER_WORD * count + 350;
       after(doneWords, () => setTgtShown(true));
-      after(doneWords + 2400, () => play((lessonIdx + 1) % LESSONS.length));
+      after(doneWords + 2400, play);
     };
 
-    play(0);
+    play();
 
     return () => {
       cancelled = true;
@@ -138,8 +150,12 @@ export function LiveDemo() {
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
-  const l = LESSONS[lesson];
-  const srcWords = l.src.split(" ");
+  const srcLang = LANG_BY_CODE[src];
+  const tgtLang = LANG_BY_CODE[tgt];
+  const srcText = PHRASES[phrase][src];
+  const tgtText = PHRASES[phrase][tgt];
+  const srcWords = srcText.split(" ");
+  const pairKey = `${phrase}:${src}:${tgt}`;
 
   return (
     <div className="relative">
@@ -228,15 +244,15 @@ export function LiveDemo() {
                 </span>
               </div>
               <div className="mt-2 flex items-center justify-between">
-                {/* the language pair fades when the lesson changes */}
+                {/* the language pair fades when it changes */}
                 <div
-                  key={lesson}
+                  key={pairKey}
                   className="flex items-center gap-1.5 text-[11px] font-semibold animate-in fade-in duration-300"
                   style={{ color: COLORS.t2 }}
                 >
-                  <span>{l.srcLang}</span>
+                  <span>{srcLang.label}</span>
                   <span style={{ color: COLORS.t4 }}>→</span>
-                  <span style={{ color: COLORS.accent }}>{l.tgtLang}</span>
+                  <span style={{ color: COLORS.accent }}>{tgtLang.label}</span>
                 </div>
                 {/* audio meter */}
                 <div className="flex items-end gap-[3px] h-4">
@@ -257,8 +273,8 @@ export function LiveDemo() {
               </div>
             </div>
 
-            {/* Transcript — one card per lesson, keyed so it resets cleanly */}
-            <div key={lesson} className="flex-1 overflow-hidden px-4 py-4">
+            {/* Transcript — one card per pair, keyed so it resets cleanly */}
+            <div key={pairKey} className="flex-1 overflow-hidden px-4 py-4">
               <div
                 className="rounded-xl px-3 py-2.5"
                 style={{
@@ -268,10 +284,10 @@ export function LiveDemo() {
               >
                 {/* source — types word-by-word */}
                 <div
-                  dir={l.srcRtl ? "rtl" : "ltr"}
-                  lang={l.srcRtl ? "ar" : undefined}
+                  dir={srcLang.rtl ? "rtl" : "ltr"}
+                  lang={srcLang.rtl ? "ar" : undefined}
                   className="text-[15px] leading-relaxed"
-                  style={{ color: COLORS.w, textAlign: l.srcRtl ? "right" : "left" }}
+                  style={{ color: COLORS.w, textAlign: srcLang.rtl ? "right" : "left" }}
                 >
                   {srcWords.map((word, wi) => (
                     <span
@@ -296,17 +312,17 @@ export function LiveDemo() {
                 {/* translation — fades in once the source is read */}
                 {tgtShown && (
                   <div
-                    dir={l.tgtRtl ? "rtl" : "ltr"}
-                    lang={l.tgtRtl ? "ar" : undefined}
+                    dir={tgtLang.rtl ? "rtl" : "ltr"}
+                    lang={tgtLang.rtl ? "ar" : undefined}
                     className="mt-2 text-[13px] leading-relaxed animate-in fade-in slide-in-from-bottom-1 duration-500"
                     style={{
                       color: COLORS.t2,
                       borderTop: `1px solid ${COLORS.border}`,
                       paddingTop: 8,
-                      textAlign: l.tgtRtl ? "right" : "left",
+                      textAlign: tgtLang.rtl ? "right" : "left",
                     }}
                   >
-                    {l.tgt}
+                    {tgtText}
                   </div>
                 )}
               </div>
