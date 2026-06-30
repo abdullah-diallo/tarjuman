@@ -10,6 +10,7 @@ import { NavVisibilityProvider } from "@/components/layout/nav-visibility";
 import { Icon } from "@/components/shared/icon";
 import { COLORS } from "@/lib/constants";
 import { LocaleProvider } from "@/lib/i18n/locale-context";
+import { BILLING_ENABLED } from "../../../convex/billingLimits";
 
 /**
  * Auth-guarded shell. Three states:
@@ -44,6 +45,16 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       void signOut().then(() => router.replace("/login"));
     }
   }, [isAuthenticated, me, signOut, router]);
+
+  // Billing is OFF (BILLING_ENABLED=false) → the whole /plans flow (pricing,
+  // checkout, complete) is a dead end with nothing to buy. Send anyone who
+  // lands on it back to the recorder instead of leaving an obsolete,
+  // non-functional page reachable.
+  useEffect(() => {
+    if (!BILLING_ENABLED && pathname.startsWith("/plans")) {
+      router.replace("/record");
+    }
+  }, [pathname, router]);
 
   if (isLoading || !isAuthenticated) {
     return (
