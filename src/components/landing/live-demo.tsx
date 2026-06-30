@@ -1,42 +1,97 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { COLORS } from "@/lib/constants";
-import { RotatingText } from "./rotating-text";
 
 /**
- * Self-contained, looping preview of the recording screen — a scripted
- * Arabic→English khutbah transcript that types itself in real time, the way the
- * real app does (word-by-word source, then the translation fades in beneath).
+ * Self-contained, looping preview of the recording screen. It cycles through
+ * several languages — each "lesson" types its own source text in real time
+ * (word-by-word) and fades the English translation in beneath, with the header
+ * language label changing to match. So the demo actually demonstrates the
+ * multilingual capability instead of always showing Arabic.
  *
- * It is a *visual demo*, not a live capture: real transcription needs a mic +
- * an authenticated Deepgram token, so the landing shows the experience with
- * hand-authored, accurate content instead. Respects prefers-reduced-motion by
- * showing the whole transcript at once.
- *
- * Hand-authored content (the hadith of intentions, Sahih al-Bukhari 1) — kept
- * accurate and respectful; Islamic terms and the ﷺ honorific are preserved, as
- * the product itself guarantees.
+ * Visual demo, not a live capture (real transcription needs a mic + an
+ * authenticated Deepgram token). Hand-authored, accurate content — the same
+ * well-known opening ("All praise is due to Allah, Lord of the worlds") in each
+ * language, with "Allah" preserved to show the terminology handling. Respects
+ * prefers-reduced-motion.
  */
 interface Segment {
-  ar: string;
+  src: string;
   en: string;
   ref?: string;
 }
+interface Lesson {
+  lang: string;
+  rtl: boolean;
+  segments: Segment[];
+}
 
-const SCRIPT: Segment[] = [
+const LESSONS: Lesson[] = [
   {
-    ar: "الحمد لله رب العالمين، والصلاة والسلام على رسول الله ﷺ",
-    en: "All praise is due to Allah, Lord of all the worlds, and peace and blessings be upon the Messenger of Allah ﷺ.",
+    lang: "Arabic",
+    rtl: true,
+    segments: [
+      {
+        src: "الحمد لله رب العالمين، والصلاة والسلام على رسول الله ﷺ",
+        en: "All praise is due to Allah, Lord of all the worlds, and peace and blessings be upon the Messenger of Allah ﷺ.",
+      },
+      {
+        src: "قال رسول الله ﷺ: إنما الأعمال بالنيات",
+        en: "The Messenger of Allah ﷺ said: “Actions are but by intentions,”",
+        ref: "Sahih al-Bukhari 1",
+      },
+    ],
   },
   {
-    ar: "قال رسول الله ﷺ: إنما الأعمال بالنيات",
-    en: "The Messenger of Allah ﷺ said: “Actions are but by intentions,”",
-    ref: "Sahih al-Bukhari 1",
+    lang: "Urdu",
+    rtl: true,
+    segments: [
+      {
+        src: "تمام تعریفیں اللہ کے لیے ہیں جو سارے جہانوں کا رب ہے",
+        en: "All praise belongs to Allah, the Lord of all the worlds.",
+      },
+    ],
   },
   {
-    ar: "وإنما لكل امرئ ما نوى",
-    en: "and every person will have only what they intended.",
+    lang: "Spanish",
+    rtl: false,
+    segments: [
+      {
+        src: "Todas las alabanzas pertenecen a Allah, Señor de los mundos.",
+        en: "All praise belongs to Allah, Lord of the worlds.",
+      },
+    ],
+  },
+  {
+    lang: "French",
+    rtl: false,
+    segments: [
+      {
+        src: "Toutes les louanges reviennent à Allah, Seigneur des mondes.",
+        en: "All praise belongs to Allah, Lord of the worlds.",
+      },
+    ],
+  },
+  {
+    lang: "Turkish",
+    rtl: false,
+    segments: [
+      {
+        src: "Hamd, âlemlerin Rabbi olan Allah'a mahsustur.",
+        en: "All praise is due to Allah, Lord of the worlds.",
+      },
+    ],
+  },
+  {
+    lang: "Indonesian",
+    rtl: false,
+    segments: [
+      {
+        src: "Segala puji bagi Allah, Tuhan semesta alam.",
+        en: "All praise be to Allah, Lord of the worlds.",
+      },
+    ],
   },
 ];
 
@@ -44,24 +99,26 @@ const MS_PER_WORD = 150;
 
 export function LiveDemo() {
   const [reduce, setReduce] = useState(false);
-  // idx = the segment currently being revealed; segments before it are done.
+  const [lesson, setLesson] = useState(0);
+  // idx = segment within the current lesson being revealed; earlier ones are done.
   const [idx, setIdx] = useState(0);
   const [words, setWords] = useState(0);
   const [enShown, setEnShown] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
-  const reduceRef = useRef(false);
-
   useEffect(() => {
-    reduceRef.current =
+    if (
       typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduceRef.current) {
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      // One-shot reduced-motion fallback (post-hydration).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setReduce(true);
-      setIdx(SCRIPT.length - 1);
+      setLesson(0);
+      setIdx(LESSONS[0].segments.length - 1);
       setWords(999);
       setEnShown(true);
-      setElapsed(12);
+      setElapsed(8);
       return;
     }
 
@@ -74,28 +131,33 @@ export function LiveDemo() {
       timers.push(id);
     };
 
-    const run = (i: number) => {
-      if (i >= SCRIPT.length) {
-        // Hold the finished transcript, then clear and loop.
-        after(2600, () => {
-          setIdx(0);
-          setWords(0);
-          setEnShown(false);
-          setElapsed(0);
-          run(0);
-        });
+    const runSeg = (lessonIdx: number, i: number) => {
+      const segs = LESSONS[lessonIdx].segments;
+      if (i >= segs.length) {
+        // Hold the finished lesson, then advance to the next language.
+        after(2400, () => playLesson((lessonIdx + 1) % LESSONS.length));
         return;
       }
-      const count = SCRIPT[i].ar.split(" ").length;
+      const count = segs[i].src.split(" ").length;
       setIdx(i);
       setWords(0);
       setEnShown(false);
       for (let w = 1; w <= count; w++) after(MS_PER_WORD * w, () => setWords(w));
       const doneWords = MS_PER_WORD * count + 300;
       after(doneWords, () => setEnShown(true));
-      after(doneWords + 1600, () => run(i + 1));
+      after(doneWords + 1500, () => runSeg(lessonIdx, i + 1));
     };
-    run(0);
+
+    const playLesson = (lessonIdx: number) => {
+      setLesson(lessonIdx);
+      setIdx(0);
+      setWords(0);
+      setEnShown(false);
+      setElapsed(0);
+      runSeg(lessonIdx, 0);
+    };
+
+    playLesson(0);
 
     return () => {
       cancelled = true;
@@ -112,6 +174,7 @@ export function LiveDemo() {
 
   const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
   const ss = String(elapsed % 60).padStart(2, "0");
+  const current = LESSONS[lesson];
 
   return (
     <div className="relative">
@@ -166,11 +229,14 @@ export function LiveDemo() {
             </div>
             <div className="mt-2 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-[11px]" style={{ color: COLORS.t3 }}>
-                <RotatingText
-                  items={["Arabic", "Urdu", "Spanish", "French", "Turkish", "Indonesian"]}
-                  intervalMs={2400}
-                  className="font-semibold"
-                />
+                {/* language label fades when the lesson (language) changes */}
+                <span
+                  key={lesson}
+                  className="font-semibold animate-in fade-in duration-300"
+                  style={{ color: COLORS.t2 }}
+                >
+                  {current.lang}
+                </span>
                 <span>→</span>
                 <span style={{ color: COLORS.accent }}>English</span>
               </div>
@@ -185,7 +251,6 @@ export function LiveDemo() {
                       background: COLORS.accent,
                       transformOrigin: "bottom",
                       animationDelay: `${i * 120}ms`,
-                      // static fallback height when motion is reduced
                       transform: reduce ? "scaleY(0.5)" : undefined,
                     }}
                   />
@@ -194,12 +259,15 @@ export function LiveDemo() {
             </div>
           </div>
 
-          {/* Transcript */}
-          <div className="flex-1 overflow-hidden px-4 py-4 flex flex-col gap-3">
-            {SCRIPT.map((seg, i) => {
+          {/* Transcript — keyed on lesson so it cleanly resets per language */}
+          <div
+            key={lesson}
+            className="flex-1 overflow-hidden px-4 py-4 flex flex-col gap-3"
+          >
+            {current.segments.map((seg, i) => {
               if (i > idx) return null;
               const isCurrent = i === idx;
-              const arWords = seg.ar.split(" ");
+              const srcWords = seg.src.split(" ");
               const showEn = isCurrent ? enShown : true;
               return (
                 <div
@@ -211,13 +279,16 @@ export function LiveDemo() {
                   }}
                 >
                   <div
-                    dir="rtl"
-                    lang="ar"
-                    className="text-right text-[15px] leading-relaxed"
-                    style={{ color: COLORS.w }}
+                    dir={current.rtl ? "rtl" : "ltr"}
+                    lang={current.rtl ? "ar" : undefined}
+                    className="text-[15px] leading-relaxed"
+                    style={{
+                      color: COLORS.w,
+                      textAlign: current.rtl ? "right" : "left",
+                    }}
                   >
                     {isCurrent
-                      ? arWords.map((word, wi) => (
+                      ? srcWords.map((word, wi) => (
                           <span
                             key={wi}
                             style={{
@@ -226,11 +297,11 @@ export function LiveDemo() {
                             }}
                           >
                             {word}
-                            {wi < arWords.length - 1 ? " " : ""}
+                            {wi < srcWords.length - 1 ? " " : ""}
                           </span>
                         ))
-                      : seg.ar}
-                    {isCurrent && words < arWords.length && (
+                      : seg.src}
+                    {isCurrent && words < srcWords.length && (
                       <span
                         className="inline-block align-middle ms-0.5 w-[2px] h-[1em] animate-pulse"
                         style={{ background: COLORS.accent }}
