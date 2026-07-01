@@ -56,6 +56,26 @@ export function MarketingNav() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Deep-link / guard redirect: /?auth=signin|signup opens the popup straight
+  // into the right mode. This is where the (app) auth-guard now sends signed-out
+  // visitors (the standalone /login and /signup pages were removed) — the popup
+  // is the only sign-in surface. Strip the param afterward so a refresh or
+  // back-nav doesn't reopen it.
+  useEffect(() => {
+    const auth = new URLSearchParams(window.location.search).get("auth");
+    if (auth !== "signin" && auth !== "signup") return;
+    // Legitimate on-mount browser-state read (same pattern as locale-context /
+    // try-live): open the popup once based on the URL. Not a cascading render.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMode(auth === "signup" ? "signUp" : "signIn");
+    setSeq((s) => s + 1);
+    setMounted(true);
+    setOpen(true);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("auth");
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  }, []);
+
   // Mounting AuthModal triggers its dynamic import; preload on hover/focus so
   // the first open is instant.
   const preload = () => setMounted(true);

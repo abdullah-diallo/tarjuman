@@ -127,7 +127,7 @@ export default function SettingsPage() {
     try {
       await deleteAccount({});
       await signOut();
-      router.replace("/login");
+      router.replace("/");
     } catch (e) {
       setDeleting(false);
       setDeleteErrorMessage(

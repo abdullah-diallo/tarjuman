@@ -17,7 +17,8 @@ import { BILLING_ENABLED } from "../../../convex/billingLimits";
  *  - loading: render a tiny spinner until Convex Auth hands us a verdict.
  *    Without this, the app shell would flash for unauthed users on first
  *    paint before redirecting.
- *  - unauthenticated: redirect to /login.
+ *  - unauthenticated: redirect to the landing with the sign-in popup opened
+ *    (/?auth=signin) — the standalone /login page was removed.
  *  - authenticated: render the app + bottom nav.
  */
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -33,7 +34,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      router.replace("/?auth=signin");
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -42,7 +43,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   // (me === undefined = still loading; only act on a resolved null.)
   useEffect(() => {
     if (isAuthenticated && me === null) {
-      void signOut().then(() => router.replace("/login"));
+      void signOut().then(() => router.replace("/"));
     }
   }, [isAuthenticated, me, signOut, router]);
 

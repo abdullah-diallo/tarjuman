@@ -2,8 +2,9 @@ import type { MetadataRoute } from "next";
 import { SITE_URL } from "@/lib/site";
 
 /**
- * Allow indexing of public marketing + auth pages. Block everything under
- * /record, /history, /session/* (auth-gated, contains private data) and
+ * Allow indexing of public marketing pages. Sign-in/sign-up live in a popup on
+ * the landing now (no standalone /login or /signup pages). Block everything
+ * under /record, /history, /session/* (auth-gated, contains private data) and
  * /api/* (no value to crawlers, just adds noise to logs).
  */
 export default function robots(): MetadataRoute.Robots {
@@ -11,7 +12,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: ["/", "/login", "/signup", "/forgot-password", "/privacy", "/terms"],
+        allow: ["/", "/privacy", "/terms"],
         disallow: ["/record", "/history", "/session/", "/api/"],
       },
     ],

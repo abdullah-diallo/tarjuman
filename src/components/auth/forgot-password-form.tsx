@@ -93,10 +93,11 @@ export function ForgotPasswordForm() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // After done, route to /login after a beat so the user sees confirmation.
+  // After done, route to the landing sign-in popup after a beat so the user
+  // sees confirmation (the standalone /login page was removed).
   useEffect(() => {
     if (stage !== "done") return;
-    const t = setTimeout(() => router.push("/login"), 1500);
+    const t = setTimeout(() => router.push("/?auth=signin"), 1500);
     return () => clearTimeout(t);
   }, [stage, router]);
 
@@ -202,7 +203,7 @@ export function ForgotPasswordForm() {
   return (
     <div className="flex flex-col flex-1 px-6 pt-12 pb-8 gap-6">
       <Link
-        href="/login"
+        href="/?auth=signin"
         className="self-start flex items-center gap-2 text-[13px]"
         style={{ color: COLORS.t3 }}
       >
@@ -226,7 +227,7 @@ export function ForgotPasswordForm() {
           <p className="text-[12px] mt-3" style={{ color: COLORS.t3 }}>
             Signed up with Google? There&apos;s no password to reset — go{" "}
             <Link
-              href="/login"
+              href="/?auth=signin"
               className="font-semibold underline"
               style={{ color: COLORS.accent }}
             >

@@ -43,7 +43,7 @@ export function AccountMenu() {
   const handleSignOut = async () => {
     setOpen(false);
     await signOut();
-    router.replace("/login");
+    router.replace("/");
   };
 
   const goToSettings = () => {

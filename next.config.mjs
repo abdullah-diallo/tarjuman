@@ -8,6 +8,17 @@ const nextConfig = {
     // Fail the build on TS errors — don't silently let regressions through.
     ignoreBuildErrors: false,
   },
+  // The standalone /login and /signup pages were removed — the landing popup
+  // (AuthModal) is the only sign-in surface now. Redirect any old bookmark,
+  // crawler, or external link to the landing with the popup pre-opened, so
+  // those URLs never 404. Temporary (307) in case auth ever gets a dedicated
+  // page again (e.g. native-app deep links).
+  async redirects() {
+    return [
+      { source: "/login", destination: "/?auth=signin", permanent: false },
+      { source: "/signup", destination: "/?auth=signup", permanent: false },
+    ];
+  },
 };
 
 // Wrap for source-map upload → UNMINIFIED prod stack traces. This is a clean
