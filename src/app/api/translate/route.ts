@@ -75,14 +75,17 @@ function languageName(code: string | undefined): string {
 
 // ─── Model routing ─────────────────────────────────────────────────────────
 // Haiku 4.5 is the default — fast and cheap, great for mechanical translation
-// with the terminology rules. Sonnet 4.6 takes over only when the segment
+// with the terminology rules. Sonnet 5 takes over only when the segment
 // looks like Quran/hadith content (where recognition + citation accuracy
 // matter and Haiku reliably misses references). Average khutbah ends up
-// ~85% Haiku / ~15% Sonnet → ~1.6× cost vs Haiku-only, much cheaper than
-// going all-Sonnet.
+// ~85% Haiku / ~15% Sonnet → the Sonnet slice costs more per segment but is
+// a fraction of traffic, so it's far cheaper than going all-Sonnet while
+// buying top-tier accuracy exactly where the citation bar is highest.
 
 const MODEL_HAIKU = "claude-haiku-4-5-20251001";
-const MODEL_SONNET = "claude-sonnet-4-6";
+// Latest Sonnet (verified live via GET /v1/models on 2026-07-01; supersedes
+// Sonnet 4.6). Escalation-only path — accuracy over latency here.
+const MODEL_SONNET = "claude-sonnet-5";
 
 // Arabic markers that suggest hadith narration. Includes common isnad
 // openers and the most-cited companion narrators.

@@ -164,15 +164,19 @@ ${transcript}`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        // Haiku 4.5 for summaries. Measured 2026-06-24 on the same prompt:
-        // Haiku TTFT ~1.3s / ~4.5s total vs Sonnet 4.6 ~4.9s / ~13.7s (≈3x
-        // faster) — Sonnet sat ~5s before the first character, which read as a
-        // dead spinner. The locked Islamic-quality bar is held by (a) the same
-        // terminology rules in the system prompt that translation (also Haiku
-        // 4.5) uses and (b) the sunnah.com /api/verify-citations pass that
-        // strips/repairs hallucinated hadith numbers. Revert to
-        // "claude-sonnet-4-6" here if a long-lecture summary regresses.
-        model: "claude-haiku-4-5-20251001",
+        // Sonnet 5 for summaries (user-directed 2026-07-01: "use the better
+        // model"). Verified live via GET /v1/models; supersedes Sonnet 4.6.
+        // Summaries are one-shot per session and stream, so they sit OFF the
+        // live per-segment critical path — the higher raw quality (structure,
+        // nuance, long-lecture coherence) is worth more here than shaving
+        // latency. `thinking` is intentionally omitted (adaptive is off when
+        // absent) to avoid adding time-to-first-token. Watch TTFT: Sonnet 4.6
+        // measured ~4.9s to first char on 2026-06-24 (read as a dead spinner);
+        // if Sonnet 5 regresses the same way, drop back to
+        // "claude-haiku-4-5-20251001" (TTFT ~1.3s). The Islamic-quality bar is
+        // still held by (a) the shared terminology system prompt and (b) the
+        // sunnah.com /api/verify-citations pass that repairs hallucinated refs.
+        model: "claude-sonnet-5",
         max_tokens: 2000,
         stream: true,
         system: [
