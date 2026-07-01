@@ -367,3 +367,56 @@ export const deleteTestUsers = internalMutation({
     };
   },
 });
+
+// ─── Orphaned auth-row cleanup ───────────────────────────────────────────
+// When a `users` row is deleted directly (e.g. from the Convex dashboard,
+// bypassing users.ts:deleteAccount), its `authAccounts` / `authSessions`
+// links survive and dangle. A dangling Google `authAccounts` row is FATAL:
+// the next OAuth sign-in finds it, tries to UPDATE the now-missing user, and
+// @convex-dev/auth throws "Update on nonexistent document ID" — silently
+// bouncing the user back to the sign-in screen on every attempt. This sweeps
+// any auth row whose `userId` no longer resolves to a user document.
+// Dry-run by default; pass { confirm: true } to actually delete.
+export const cleanupOrphanedAuth = internalMutation({
+  args: { confirm: v.optional(v.boolean()) },
+  handler: async (ctx, { confirm }) => {
+    const orphanAccounts = [];
+    for (const a of await ctx.db.query("authAccounts").collect()) {
+      if ((await ctx.db.get(a.userId)) === null) orphanAccounts.push(a);
+    }
+    const orphanSessions = [];
+    for (const s of await ctx.db.query("authSessions").collect()) {
+      if ((await ctx.db.get(s.userId)) === null) orphanSessions.push(s);
+    }
+
+    if (!confirm) {
+      return {
+        dryRun: true as const,
+        orphanedAccounts: orphanAccounts.length,
+        orphanedSessions: orphanSessions.length,
+        accountProviders: orphanAccounts.map((a) => a.provider),
+      };
+    }
+
+    let refreshTokens = 0;
+    const killedSessionIds = new Set<Id<"authSessions">>();
+    for (const s of orphanSessions) {
+      killedSessionIds.add(s._id);
+      await ctx.db.delete(s._id);
+    }
+    for (const rt of await ctx.db.query("authRefreshTokens").collect()) {
+      if (killedSessionIds.has(rt.sessionId)) {
+        await ctx.db.delete(rt._id);
+        refreshTokens++;
+      }
+    }
+    for (const a of orphanAccounts) await ctx.db.delete(a._id);
+
+    return {
+      dryRun: false as const,
+      deletedAccounts: orphanAccounts.length,
+      deletedSessions: orphanSessions.length,
+      deletedRefreshTokens: refreshTokens,
+    };
+  },
+});
