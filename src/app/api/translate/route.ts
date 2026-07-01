@@ -7,6 +7,7 @@ import { requireAuthFromHeader, checkRateLimit } from "@/lib/api-auth";
 import { verifyAndEnrich } from "@/lib/sunnah";
 import { verifyAndEnrichQuran } from "@/lib/quran";
 import { isOffLanguageScript } from "@/lib/script";
+import { looksLikeMetaCommentary } from "@/lib/translation-guard";
 
 interface TranslateRequest {
   text: string;
@@ -605,9 +606,15 @@ export async function POST(req: NextRequest) {
         // Post-process the COMPLETE output exactly as the old non-streaming
         // path did, then deliver it in the metadata trailer.
         const parsed = parseMergeDirective(rawText, validContextIds);
-        if (!parsed.translation.trim()) {
+        if (
+          !parsed.translation.trim() ||
+          looksLikeMetaCommentary(parsed.translation)
+        ) {
           // The model returned an empty translation (its "untranslatable /
-          // off-language" verdict). FAIL-OPEN: emit an empty translatedText
+          // off-language" verdict) — OR it disobeyed the "output nothing"
+          // instruction and leaked first-person meta-commentary about the
+          // input ("I recognize this as a transliteration artifact…"). Either
+          // way it is NOT a translation. FAIL-OPEN: emit an empty translatedText
           // WITHOUT `filtered`, so the client keeps the segment's
           // Deepgram-transcribed source (ground truth) with a blank translation
           // rather than deleting it. The deterministic noise filter

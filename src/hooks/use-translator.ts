@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthToken } from "@convex-dev/auth/react";
 import type { LiveSegment } from "@/types";
+import { looksLikeMetaCommentary } from "@/lib/translation-guard";
 
 // Matches the sentinel in src/app/api/translate/route.ts — separates the
 // streamed plain-translation deltas from the final metadata JSON trailer.
@@ -200,13 +201,19 @@ export function useTranslator({
             markCompleted();
             return;
           }
-          if (!data.translatedText) {
+          if (
+            !data.translatedText ||
+            looksLikeMetaCommentary(data.translatedText)
+          ) {
             // FAIL-OPEN: the server returned an empty translation (the model
-            // judged this segment untranslatable / off-language). The Deepgram
-            // source is ground truth and must NEVER be deleted by a translation
-            // verdict — keep the segment with a blank translation so its source
-            // card persists to the live view and the saved session. (Genuine
-            // noise is dropped earlier via data.filtered, handled above.)
+            // judged this segment untranslatable / off-language) — or leaked
+            // meta-commentary that the server guard should have blanked but,
+            // as a last line of defense (stale build / cache), we blank here
+            // too so it can never render. The Deepgram source is ground truth
+            // and must NEVER be deleted by a translation verdict — keep the
+            // segment with a blank translation so its source card persists to
+            // the live view and the saved session. (Genuine noise is dropped
+            // earlier via data.filtered, handled above.)
             setTranslations((prev) =>
               prev[seg.id] === "" ? prev : { ...prev, [seg.id]: "" }
             );
@@ -304,8 +311,12 @@ export function useTranslator({
                 // render a JSON body (passthrough/filtered) as the translation.
                 if (sentinelAt !== -1) {
                   const visible = acc.slice(0, sentinelAt);
+                  // Never let leaked model meta-commentary preview on screen —
+                  // blank it the instant a marker appears (the server's trailer
+                  // will confirm empty). See @/lib/translation-guard.
+                  const shown = looksLikeMetaCommentary(visible) ? "" : visible;
                   setTranslations((prev) =>
-                    prev[seg.id] === visible ? prev : { ...prev, [seg.id]: visible }
+                    prev[seg.id] === shown ? prev : { ...prev, [seg.id]: shown }
                   );
                 } else if (!looksLikeJson && acc.trimStart().startsWith("{")) {
                   looksLikeJson = true; // JSON body — wait for it whole, don't show
@@ -318,10 +329,13 @@ export function useTranslator({
                   const safeEnd = acc.length - META_SENTINEL.length;
                   if (safeEnd > 0) {
                     const visible = acc.slice(0, safeEnd);
+                    const shown = looksLikeMetaCommentary(visible)
+                      ? ""
+                      : visible;
                     setTranslations((prev) =>
-                      prev[seg.id] === visible
+                      prev[seg.id] === shown
                         ? prev
-                        : { ...prev, [seg.id]: visible }
+                        : { ...prev, [seg.id]: shown }
                     );
                   }
                 }
