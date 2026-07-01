@@ -17,6 +17,7 @@ import {
   type LocaleCode,
 } from "./locales";
 import { MESSAGES, type MessageKey } from "./messages";
+import { EXTRA_LOCALES } from "./messages-extra";
 
 const STORAGE_KEY = "tarjuman:locale";
 
@@ -96,7 +97,9 @@ export function LocaleProvider({
   const t = useCallback(
     (key: MessageKey, vars?: Record<string, string | number>) => {
       const entry = MESSAGES[key] as Record<string, string> | undefined;
-      let str = entry?.[locale] ?? entry?.en ?? key;
+      // Resolution order: curated locale (messages.ts) → machine-translated
+      // locale (messages-extra.ts) → English → the raw key.
+      let str = entry?.[locale] ?? EXTRA_LOCALES[locale]?.[key] ?? entry?.en ?? key;
       if (vars) {
         for (const [k, v] of Object.entries(vars)) {
           str = str.replace(`{${k}}`, String(v));

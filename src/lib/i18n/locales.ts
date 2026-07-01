@@ -14,6 +14,30 @@ export const UI_LOCALES = [
   { code: "bn", label: "Bengali", native: "বাংলা", rtl: false },
   { code: "ms", label: "Malay", native: "Bahasa Melayu", rtl: false },
   { code: "de", label: "German", native: "Deutsch", rtl: false },
+  // Machine-translated additions (strings in messages-extra.ts) — the full
+  // transcription language set, so any language you can transcribe you can also
+  // run the app in. Hebrew is right-to-left.
+  { code: "pt", label: "Portuguese", native: "Português", rtl: false },
+  { code: "it", label: "Italian", native: "Italiano", rtl: false },
+  { code: "nl", label: "Dutch", native: "Nederlands", rtl: false },
+  { code: "ru", label: "Russian", native: "Русский", rtl: false },
+  { code: "hi", label: "Hindi", native: "हिन्दी", rtl: false },
+  { code: "ja", label: "Japanese", native: "日本語", rtl: false },
+  { code: "ko", label: "Korean", native: "한국어", rtl: false },
+  { code: "zh", label: "Chinese", native: "中文", rtl: false },
+  { code: "vi", label: "Vietnamese", native: "Tiếng Việt", rtl: false },
+  { code: "pl", label: "Polish", native: "Polski", rtl: false },
+  { code: "cs", label: "Czech", native: "Čeština", rtl: false },
+  { code: "hu", label: "Hungarian", native: "Magyar", rtl: false },
+  { code: "no", label: "Norwegian", native: "Norsk", rtl: false },
+  { code: "sv", label: "Swedish", native: "Svenska", rtl: false },
+  { code: "da", label: "Danish", native: "Dansk", rtl: false },
+  { code: "fi", label: "Finnish", native: "Suomi", rtl: false },
+  { code: "el", label: "Greek", native: "Ελληνικά", rtl: false },
+  { code: "he", label: "Hebrew", native: "עברית", rtl: true },
+  { code: "ro", label: "Romanian", native: "Română", rtl: false },
+  { code: "ca", label: "Catalan", native: "Català", rtl: false },
+  { code: "uk", label: "Ukrainian", native: "Українська", rtl: false },
 ] as const;
 
 export type LocaleCode = (typeof UI_LOCALES)[number]["code"];
@@ -21,7 +45,7 @@ export type LocaleCode = (typeof UI_LOCALES)[number]["code"];
 export const DEFAULT_LOCALE: LocaleCode = "en";
 
 export function isRtlLocale(code: string): boolean {
-  return code === "ar" || code === "ur";
+  return UI_LOCALES.some((l) => l.code === code && l.rtl);
 }
 
 export function isLocaleCode(code: string): code is LocaleCode {

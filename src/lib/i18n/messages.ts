@@ -88,6 +88,10 @@ export const MESSAGES = {
   "lp.perMonth": { en: "/ month", ar: "/ شهريًا", ur: "/ ماہانہ", fr: "/ mois", es: "/ mes", id: "/ bulan", tr: "/ ay", bn: "/ মাস", ms: "/ bulan", de: "/ Monat" },
   "lp.comingSoon": { en: "Coming soon", ar: "قريبًا", ur: "جلد آ رہا ہے", fr: "Bientôt disponible", es: "Próximamente", id: "Segera hadir", tr: "Yakında", bn: "শীঘ্রই আসছে", ms: "Akan datang", de: "Demnächst" },
   "lp.mostPopular": { en: "Most popular", ar: "الأكثر شيوعًا", ur: "سب سے مقبول", fr: "Le plus populaire", es: "Más popular", id: "Paling populer", tr: "En popüler", bn: "সবচেয়ে জনপ্রিয়", ms: "Paling popular", de: "Am beliebtesten" },
-} as const satisfies Record<string, Record<LocaleCode, string>>;
+  // English is required on every key (the guaranteed fallback); the other
+  // curated locales are optional here, and the machine-translated locales live
+  // in messages-extra.ts (EXTRA_LOCALES). Extending the locale set therefore
+  // doesn't force all languages onto every key in this file.
+} as const satisfies Record<string, { en: string } & Partial<Record<LocaleCode, string>>>;
 
 export type MessageKey = keyof typeof MESSAGES;
